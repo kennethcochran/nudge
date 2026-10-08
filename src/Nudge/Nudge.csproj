@@ -32,6 +32,12 @@
     <None Include="rules/*.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Ship the nudge-ruleset-gen skill alongside the binary so `nudge skill install`
+         can place it into AI harness skills directories. Same mechanism as rules/. -->
+    <None Include="..\..\.agents\skills\nudge-ruleset-gen\**\*">
+      <Link>skills\nudge-ruleset-gen\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\..\README.md">
       <Pack>true</Pack>
       <PackagePath>README.md</PackagePath>

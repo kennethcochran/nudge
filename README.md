@@ -143,11 +143,12 @@ down the gaming moves you've actually seen agents try.
 ## Contributing a ruleset
 
 Built guides for an analyzer nobody's covered yet? This repo ships the skill
-for it: `skills/nudge-ruleset-gen/` walks through the whole process —
+for it: `.agents/skills/nudge-ruleset-gen/` walks through the whole process —
 extracting the analyzer's diagnostic descriptors, researching each rule,
-writing the guides, validating them, and packaging the ruleset. Open a PR with
-the new ruleset and include the validation report — the methodology is what
-gets reviewed, not just the guides.
+writing the guides, validating them, and packaging the ruleset. Get it into
+your AI harness with `nudge skill install` (see the skill's `INSTALL.md` for
+the per-harness details). Open a PR with the new ruleset and include the
+validation report — the methodology is what gets reviewed, not just the guides.
 
 ## The fine print
 

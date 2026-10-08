@@ -92,9 +92,11 @@ internal sealed class CliOptions
                      [--baseline <file> | --write-baseline <file>] [--timeout <seconds>]
           dotnet build ... | nudge --stdin [--rules <dir>] [--baseline <file>]
           nudge ruleset add <name> | nudge ruleset list | nudge ruleset remove <name> | nudge ruleset detect
+          nudge skill install [--global|--project] [--harness <name>...] [--all]
 
         Rulesets are downloadable coaching-guide packs (e.g. nudge ruleset add sonar).
-        Run `nudge ruleset` for details.
+        Run `nudge ruleset` for details. `nudge skill install` puts the
+        ruleset-generator skill into your AI coding harnesses.
 
         Exit codes:
           0  clean — no findings
