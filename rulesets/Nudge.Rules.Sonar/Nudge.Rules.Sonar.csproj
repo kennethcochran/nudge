@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Content-only package: no assembly needed, but SDK requires a TFM. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <PackageId>Nudge.Rules.Sonar</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Kenneth Cochran</Authors>
+    <Description>Coaching guides for SonarSource analyzers (SonarAnalyzer.CSharp), for the Nudge habit-hooks tool. Install with: nudge ruleset add sonar</Description>
+    <PackageTags>nudge;sonarqube;analyzer;coaching;habit-hooks</PackageTags>
+    <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="rules/*.md">
+      <Pack>true</Pack>
+      <PackagePath>rules/</PackagePath>
+    </Content>
+    <Content Include="ruleset.json">
+      <Pack>true</Pack>
+      <PackagePath>ruleset.json</PackagePath>
+    </Content>
+  </ItemGroup>
+
+</Project>

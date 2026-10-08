@@ -1,0 +1,1 @@
+{"analyzerPackages":["SonarAnalyzer.CSharp"],"description":"Coaching guides for SonarSource analyzers (SonarAnalyzer.CSharp).","name":"sonar","packageId":"Nudge.Rules.Sonar","rulePrefixes":["S"],"version":"1.0.0"}
