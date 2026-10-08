@@ -5,6 +5,8 @@ agents. Instead of handing an agent a bare diagnostic like "method too complex",
 it hands over a short coaching guide: why the rule exists, how to fix it
 properly, and the specific cheats to avoid.
 
+> **Hat tip:** Nudge is a .NET-native take on the [Habit Hooks](https://github.com/habit-hooks/habit-hooks) idea — attach the rule's rationale to the diagnostic, so the agent fixes the code instead of gaming the metric. Habit Hooks covers Python and Node.js; Nudge brings the same coaching to Roslyn and Sonar diagnostics.
+
 ## Why it exists
 
 I write most of my code with AI coding agents. They're fast, tireless, and —
