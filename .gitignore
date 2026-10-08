@@ -3,7 +3,7 @@ bin/
 obj/
 out/
 # ...except the skill's helper sources, which live under a bin/ dir by convention
-!skills/nudge-ruleset-gen/bin/
+!.agents/skills/nudge-ruleset-gen/bin/
 
 ## Test results
 TestResults/
