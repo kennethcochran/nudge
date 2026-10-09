@@ -11,9 +11,10 @@ bare metric → ~6% genuine fixes; coaching → ~83% (n=90, deterministic judge)
 ## Protocol
 
 1. **Pick the cases.** Take 5–10 real analyzer violations from this repo — or seed
-   fresh ones on a scratch branch (e.g. introduce a LINQ call in an optimizer pass
-   for GVM003, a non-exhaustive switch for GVM005, a `class` in a DOD namespace for
-   GVM001). Real violations are better; seeded ones are fine if they're realistic.
+   fresh ones on a scratch branch (e.g. introduce a LINQ call in an
+   allocation-sensitive hot path, a non-exhaustive switch, a `class` in a
+   data-oriented-design namespace). Real violations are better; seeded ones are
+   fine if they're realistic.
 
 2. **Two conditions, same starting state.**
    - **A (bare):** agent gets the raw `dotnet build` diagnostic lines only.

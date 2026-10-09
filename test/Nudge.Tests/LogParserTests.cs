@@ -34,13 +34,13 @@ public sealed class LogParserTests
     [Test]
     public void Parse_ErrorLine_MarksDiagnosticAsError()
     {
-        const string log = "/repo/src/Foo/Bar.cs(5,1): error GVM003: LINQ usage (System.Linq.Enumerable methods) is prohibited in optimization passes";
+        const string log = "/repo/src/Foo/Bar.cs(5,1): error CUSTOM001: LINQ usage (System.Linq.Enumerable methods) is prohibited in optimization passes";
 
         var result = LogParser.Parse(log);
 
         Assert.That(result, Has.Count.EqualTo(1));
         Assert.That(result[0].IsError, Is.True);
-        Assert.That(result[0].RuleId, Is.EqualTo("GVM003"));
+        Assert.That(result[0].RuleId, Is.EqualTo("CUSTOM001"));
     }
 
     [Test]
