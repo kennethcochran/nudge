@@ -13,17 +13,23 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>nudge</ToolCommandName>
     <PackageId>Nudge</PackageId>
-    <Version>1.0.0</Version>
+    <!-- Version comes from MinVer: `git tag v1.2.0` -> 1.2.0. Do not hand-edit. -->
     <Authors>Kenneth Cochran</Authors>
     <PackageTags>roslyn;sonarqube;analyzer;ai;coaching;habit-hooks</PackageTags>
     <PackageLicenseExpression>Unlicense</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/kennethcochran/nudge</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/kennethcochran/nudge</PackageProjectUrl>
   </PropertyGroup>
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Nudge.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- MinVer: package version is derived from the git tag (v1.2.0 -> 1.2.0).
+         PrivateAssets so it never leaks into the published tool's dependencies. -->
+    <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <!-- Ship the rule guides alongside the binary so the shim finds them with no explicit rules flag.
