@@ -21,6 +21,9 @@
     <RepositoryUrl>https://github.com/kennethcochran/nudge</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/kennethcochran/nudge</PackageProjectUrl>
+    <!-- MinVer 8+ defaults to an empty tag prefix; set it explicitly to match
+         our v-prefixed release tags (v1.2.0 -> 1.2.0). -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,7 +31,9 @@
       <_Parameter1>Nudge.Tests</_Parameter1>
     </AssemblyAttribute>
     <!-- MinVer: package version is derived from the git tag (v1.2.0 -> 1.2.0).
-         PrivateAssets so it never leaks into the published tool's dependencies. -->
+         MinVer 8+ defaults to an empty tag prefix, so set it explicitly to
+         match our v-prefixed tags. PrivateAssets so it never leaks into the
+         published tool's dependencies. -->
     <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
