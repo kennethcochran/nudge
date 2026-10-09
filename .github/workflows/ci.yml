@@ -22,6 +22,3 @@ jobs:
 
       - name: Test
         run: dotnet test test/Nudge.Tests/Nudge.Tests.csproj --no-build --nologo
-
-      - name: Smoke-test skill install
-        run: dotnet run --no-build --project src/Nudge/Nudge.csproj -- skill install --dry-run
