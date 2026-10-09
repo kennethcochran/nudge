@@ -1,0 +1,17 @@
+# CodeRabbit AI code review configuration.
+# Docs: https://docs.coderabbit.ai
+language: "en-US"
+reviews:
+  profile: "chill"                # chill | assertive — start quiet, tune up later
+  request_changes_workflow: false # never block merges on its own; reviewer approves
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+chat:
+  auto_reply: true
