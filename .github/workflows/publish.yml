@@ -1,0 +1,55 @@
+# Publish to nuget.org via trusted publishing (GitHub OIDC) — no API key secret.
+#
+# Trigger: push a version tag, e.g. `git tag v1.0.0-rc.1 && git push origin v1.0.0-rc.1`.
+# The package version comes from MinVer reading that tag.
+#
+# ONE-TIME SETUP (repo owner, on nuget.org — cannot be done from here):
+#   1. Sign in at nuget.org -> account menu -> Trusted Publishing -> Add policy:
+#        Package owner:  <your nuget.org username>
+#        Repository owner: kennethcochran
+#        Repository:       nudge
+#        Workflow file:    publish.yml   (file name only)
+#   2. In this repo: Settings -> Secrets and variables -> Actions -> New repository
+#      secret: NUGET_USER = <your nuget.org username> (profile name, not email)
+#
+# After that, publishing a release is just pushing a tag.
+
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # required for OIDC trusted publishing
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # MinVer needs full history and tags
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build Nudge.sln -c Release --nologo
+
+      - name: Test
+        run: dotnet test test/Nudge.Tests/Nudge.Tests.csproj -c Release --no-build --nologo
+
+      - name: Pack
+        run: dotnet pack src/Nudge/Nudge.csproj -c Release --no-build -o ./artifacts --nologo
+
+      - name: NuGet login (OIDC -> short-lived API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: dotnet nuget push './artifacts/*.nupkg' --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --skip-duplicate
