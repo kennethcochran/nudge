@@ -13,6 +13,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nudge.Core", "src\Nudge.Core\Nudge.Core.csproj", "{2C1783D6-9B1D-4F98-BF6B-CB3E7D91A1EE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nudge.Logger", "src\Nudge.Logger\Nudge.Logger.csproj", "{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,11 +71,24 @@ Global
 		{2C1783D6-9B1D-4F98-BF6B-CB3E7D91A1EE}.Release|x64.Build.0 = Release|Any CPU
 		{2C1783D6-9B1D-4F98-BF6B-CB3E7D91A1EE}.Release|x86.ActiveCfg = Release|Any CPU
 		{2C1783D6-9B1D-4F98-BF6B-CB3E7D91A1EE}.Release|x86.Build.0 = Release|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Debug|x64.Build.0 = Debug|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Debug|x86.Build.0 = Debug|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Release|x64.ActiveCfg = Release|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Release|x64.Build.0 = Release|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Release|x86.ActiveCfg = Release|Any CPU
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2C1783D6-9B1D-4F98-BF6B-CB3E7D91A1EE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{323F2488-FFA5-4CDC-81FC-3AE83D32D9FD} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
