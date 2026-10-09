@@ -1,8 +1,11 @@
 # Nudge build-pipeline integration plan
 
 **Status:** approved for implementation (2026-10-09)
-**Goal:** every `dotnet build` in an initialized repo automatically embellishes
-diagnostics with nudge coaching guides, and models can pull a guide on demand.
+**Goal:** every `dotnet build` that processes the repository's
+`Directory.Build.rsp` automatically embellishes diagnostics with nudge coaching
+guides, and models can pull a guide on demand. (Builds that skip response-file
+processing — `/noautoresponse`, or Visual Studio's in-process IDE builds —
+don't load the logger; the on-demand lookup covers those.)
 
 ## Background (decisions from 2026-10-09 design discussion)
 
