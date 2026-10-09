@@ -78,7 +78,7 @@ internal sealed class RuleCatalog
     {
         foreach (var rulesDir in _rulesDirs)
         {
-            var guide = TryLoadGuide(Path.Combine(rulesDir, ruleId + ".md"), ruleId);
+            var guide = TryLoadGuide(rulesDir, ruleId);
             if (guide != null)
                 return guide;
         }
@@ -117,11 +117,25 @@ internal sealed class RuleCatalog
         return !KnownRules.Descriptors.ContainsKey(ruleId);
     }
 
-    private static RuleGuide? TryLoadGuide(string path, string ruleId)
+    /// <summary>
+    /// Loads the guide for <paramref name="ruleId"/> from <paramref name="rulesDir"/>,
+    /// matching the file name case-insensitively: rule IDs arrive in varying case
+    /// and Linux filesystems are case-sensitive, so "s1234" must find "S1234.md".
+    /// </summary>
+    private static RuleGuide? TryLoadGuide(string rulesDir, string ruleId)
     {
-        if (!File.Exists(path))
-            return null;
+        var direct = Path.Combine(rulesDir, ruleId + ".md");
+        if (File.Exists(direct))
+            return ParseGuide(direct, ruleId);
 
+        var match = Directory.EnumerateFiles(rulesDir, "*.md")
+            .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
+                .Equals(ruleId, StringComparison.OrdinalIgnoreCase));
+        return match != null ? ParseGuide(match, ruleId) : null;
+    }
+
+    private static RuleGuide ParseGuide(string path, string ruleId)
+    {
         var text = File.ReadAllText(path);
         var title = FirstHeadingTitle(text) ?? ruleId;
         var why = ExtractSection(text, "Why") ?? "No rationale recorded for this rule yet.";
