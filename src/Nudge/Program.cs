@@ -17,6 +17,8 @@ internal static class Program
             return RunSkillCommand(args.Skip(1).ToArray());
         if (args.Length > 0 && args[0].Equals("explain", StringComparison.OrdinalIgnoreCase))
             return RunExplainCommand(args.Skip(1).ToArray());
+        if (args.Length > 0 && args[0].Equals("init", StringComparison.OrdinalIgnoreCase))
+            return RunInitCommand(args.Skip(1).ToArray());
 
         CliOptions options;
         try
@@ -131,6 +133,147 @@ internal static class Program
     /// Exit 0 even for fallback guides (honest output, not a failure);
     /// exit 2 on usage errors.
     /// </summary>
+    private const string InitUsage = """
+        Usage: nudge init [--force] [--remove]
+
+        Installs the nudge MSBuild logger into this repo so every `dotnet build`
+        embellishes diagnostics with coaching guides:
+          - copies Nudge.Logger.dll (and Nudge.Core.dll) into .nudge/
+          - writes Directory.Build.rsp at the repo root loading the logger
+
+        Idempotent: re-running refreshes the logger DLLs. Merges with an
+        existing Directory.Build.rsp instead of overwriting it.
+        `nudge init --remove` undoes the installation (keeps .nudge/baseline.txt).
+        """;
+
+    /// <summary>
+    /// The on-ramp for build-time coaching: install the MSBuild logger into
+    /// the repo. Explicit opt-in — an auto-loaded logger DLL is code execution
+    /// on build, so this never happens without the user asking for it.
+    /// </summary>
+    private static int RunInitCommand(string[] args)
+    {
+        try
+        {
+            var remove = false;
+            var force = false;
+            foreach (var a in args)
+            {
+                if (a == "--remove") remove = true;
+                else if (a == "--force") force = true;
+                else throw new CliUsageException($"Unknown argument: {a}");
+            }
+
+            var rootDir = FindRepoRoot();
+            var nudgeDir = Path.Combine(rootDir, ".nudge");
+            var rspPath = Path.Combine(rootDir, "Directory.Build.rsp");
+
+            // Lines init manages inside Directory.Build.rsp, identified by marker.
+            const string marker = "# Added by `nudge init`";
+            var loggerLine =
+                "/logger:Nudge.Logger.NudgeLogger,%MSBuildThisFileDirectory%.nudge/Nudge.Logger.dll" +
+                ";baseline=%MSBuildThisFileDirectory%.nudge/baseline.txt";
+
+            if (remove)
+                return RemoveInit(nudgeDir, rspPath, marker);
+
+            Directory.CreateDirectory(nudgeDir);
+
+            // The logger payload ships inside the nudge tool package, next to
+            // the tool's own binaries.
+            var toolDir = AppContext.BaseDirectory;
+            foreach (var dll in new[] { "Nudge.Logger.dll", "Nudge.Core.dll" })
+            {
+                var source = Path.Combine(toolDir, dll);
+                if (!File.Exists(source))
+                    throw new InvalidOperationException(
+                        $"Logger payload not found: {source}. Reinstall nudge and try again.");
+                File.Copy(source, Path.Combine(nudgeDir, dll), overwrite: true);
+            }
+
+            var lines = File.Exists(rspPath)
+                ? File.ReadAllLines(rspPath).ToList()
+                : new List<string>();
+            var alreadyInstalled = lines.Any(l => l.Contains("Nudge.Logger", StringComparison.Ordinal));
+
+            if (!alreadyInstalled || force)
+            {
+                // Strip any previous init-managed lines before writing fresh ones.
+                lines = lines
+                    .Where(l => !l.StartsWith(marker, StringComparison.Ordinal)
+                             && !l.Contains("Nudge.Logger", StringComparison.Ordinal))
+                    .ToList();
+                if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
+                    lines.Add(string.Empty);
+                lines.Add(marker + " — loads the nudge MSBuild logger for coaching diagnostics. Remove with `nudge init --remove`.");
+                lines.Add(loggerLine);
+                File.WriteAllLines(rspPath, lines);
+            }
+
+            Console.WriteLine($"nudge init: logger installed.");
+            Console.WriteLine($"  logger:  {Path.Combine(nudgeDir, "Nudge.Logger.dll")}");
+            Console.WriteLine($"  rsp:     {rspPath}");
+            Console.WriteLine($"  Every `dotnet build` under {rootDir} now gets coaching diagnostics.");
+            return 0;
+        }
+        catch (CliUsageException ex)
+        {
+            if (ex.Message != null)
+                Console.Error.WriteLine($"Error: {ex.Message}\n");
+            Console.Error.WriteLine(InitUsage);
+            return 2;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"nudge init failed: {ex.Message}");
+            return 2;
+        }
+    }
+
+    private static int RemoveInit(string nudgeDir, string rspPath, string marker)
+    {
+        var removed = new List<string>();
+
+        foreach (var dll in new[] { "Nudge.Logger.dll", "Nudge.Core.dll" })
+        {
+            var path = Path.Combine(nudgeDir, dll);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                removed.Add(path);
+            }
+        }
+
+        if (File.Exists(rspPath))
+        {
+            var remaining = File.ReadAllLines(rspPath)
+                .Where(l => !l.StartsWith(marker, StringComparison.Ordinal)
+                         && !l.Contains("Nudge.Logger", StringComparison.Ordinal))
+                .ToList();
+            if (remaining.All(string.IsNullOrWhiteSpace))
+            {
+                File.Delete(rspPath);
+                removed.Add(rspPath + " (deleted — only contained nudge lines)");
+            }
+            else
+            {
+                File.WriteAllLines(rspPath, remaining);
+                removed.Add(rspPath + " (nudge lines removed)");
+            }
+        }
+
+        // Baseline is user data; never delete it here.
+        if (removed.Count == 0)
+            Console.WriteLine("nudge init: nothing to remove.");
+        else
+        {
+            Console.WriteLine("nudge init: removed:");
+            foreach (var r in removed)
+                Console.WriteLine($"  {r}");
+        }
+        return 0;
+    }
+
     private static int RunExplainCommand(string[] args)
     {
         try
@@ -358,11 +501,7 @@ internal static class Program
             buildFailed = exitCode != 0;
         }
 
-        var diagnostics = LogParser.Parse(logText)
-            .OrderBy(d => d.RuleId)
-            .ThenBy(d => d.File)
-            .ThenBy(d => d.Line)
-            .ToList();
+        var diagnostics = LogParser.Parse(logText).ToList();
 
         if (options.WriteBaseline != null)
         {
@@ -372,27 +511,14 @@ internal static class Program
         }
 
         var baseline = Baseline.Load(options.Baseline);
-        var findings = diagnostics
-            .Where(d => !Baseline.IsSnoozed(d, baseline, rootDir))
-            .ToList();
-
         var catalog = RuleCatalog.WithInstalledRulesets(rulesDir);
+        var result = CoachingEngine.Generate(diagnostics, catalog, baseline, rootDir, scopeLabel, buildFailed);
+        Console.Write(result.Report);
 
-        if (findings.Count == 0)
-        {
-            Console.Write(Reporter.RenderClean(scopeLabel));
-            return 0;
-        }
-
-        var groups = findings
-            .GroupBy(d => d.RuleId, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        Console.Write(Reporter.Render(groups, catalog, rootDir, scopeLabel, buildFailed));
-
-        SuggestMissingRulesets(groups, catalog, rootDir);
+        SuggestMissingRulesets(result.FallbackRuleIds, rootDir);
 
         // Errors mean the build failed: analyzers may not have run to completion.
-        return findings.Any(d => d.IsError) || buildFailed ? 2 : 1;
+        return result.HasErrors || buildFailed ? 2 : result.FindingCount > 0 ? 1 : 0;
     }
 
     /// <summary>
@@ -400,13 +526,9 @@ internal static class Program
     /// with available-but-uninstalled rulesets, suggest installing them.
     /// </summary>
     private static void SuggestMissingRulesets(
-        List<IGrouping<string, BuildDiagnostic>> groups, RuleCatalog catalog, string rootDir)
+        IReadOnlyList<string> fallbackRuleIds, string rootDir)
     {
-        var fallbackRules = groups
-            .Select(g => g.Key)
-            .Where(ruleId => catalog.UsesFallback(ruleId))
-            .ToList();
-        if (fallbackRules.Count == 0)
+        if (fallbackRuleIds.Count == 0)
             return;
 
         var missing = AnalyzerDetector.MissingRulesets(rootDir);
