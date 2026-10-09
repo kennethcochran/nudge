@@ -72,6 +72,31 @@ internal static class Reporter
     public static string RenderClean(string scopeLabel) =>
         $"# Nudge Report — {scopeLabel}\n\nClean — no findings.\n";
 
+    /// <summary>
+    /// Renders the coaching guide for a single rule, in the same
+    /// Why / Do this / AVOID shape as the report sections.
+    /// </summary>
+    public static string RenderGuide(RuleGuide guide)
+    {
+        var sb = new StringBuilder();
+
+        sb.AppendLine($"# {guide.RuleId} — {guide.Title}");
+        sb.AppendLine();
+        sb.AppendLine(guide.Why);
+        sb.AppendLine();
+        sb.AppendLine("**Do this:**");
+        sb.AppendLine();
+        for (int i = 0; i < guide.DoThis.Count; i++)
+            sb.AppendLine($"{i + 1}. {guide.DoThis[i]}");
+        sb.AppendLine();
+        sb.AppendLine("**AVOID:**");
+        sb.AppendLine();
+        foreach (var avoid in guide.Avoid)
+            sb.AppendLine($"- {avoid}");
+
+        return sb.ToString();
+    }
+
     private static string Shorten(string file, string rootDir)
     {
         var rel = Path.GetRelativePath(rootDir, file);

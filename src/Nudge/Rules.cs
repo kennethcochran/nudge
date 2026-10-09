@@ -154,7 +154,8 @@ internal sealed class RuleCatalog
         new(
             ruleId,
             $"Diagnostic {ruleId}",
-            $"The build reported: {rawMessage} No coaching guide is recorded for this rule yet. " +
+            (string.IsNullOrWhiteSpace(rawMessage) ? "" : $"The build reported: {rawMessage} ") +
+            "No coaching guide is recorded for this rule yet. " +
             "If this rule fires often, add a guide at rules/" + ruleId + ".md explaining why the rule matters and what a good fix looks like.",
             new[]
             {
