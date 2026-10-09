@@ -33,7 +33,7 @@ coaching guide in three parts:
 A gate says "you shall not pass." A nudge says "here's the better path — and
 yes, I know the shortcut you're thinking of." The name stuck.
 
-The idea started as a "habit shim" inside my GameVM compiler project: a way to
+The idea started as a "habit shim" inside my [GameVM](https://github.com/kennethcochran/GameVM) compiler project: a way to
 coach the agents writing that codebase. It worked well enough to deserve its own
 life, so here it is — a standalone .NET global tool with downloadable guide
 packs ("rulesets") for common analyzer families.

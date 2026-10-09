@@ -67,7 +67,7 @@ public sealed class BaselineTests
         var diagnostics = new[]
         {
             Diag("S1234", "/repo/src/Foo/Bar.cs"),
-            Diag("GVM003", "/repo/src/Baz/Qux.cs"),
+            Diag("CUSTOM001", "/repo/src/Baz/Qux.cs"),
         };
 
         Baseline.Write(baselinePath, diagnostics, "/repo");

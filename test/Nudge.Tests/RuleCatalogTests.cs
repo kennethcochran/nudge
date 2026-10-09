@@ -29,8 +29,8 @@ public sealed class RuleCatalogTests
     [Test]
     public void Resolve_HandWrittenGuideExists_PrefersItOverHarvestedMetadata()
     {
-        File.WriteAllText(Path.Combine(_tempDir, "GVM003.md"), """
-            # GVM003 — Custom Title From Guide
+        File.WriteAllText(Path.Combine(_tempDir, "CUSTOM001.md"), """
+            # CUSTOM001 — Custom Title From Guide
 
             ## Why
             Custom rationale.
@@ -43,11 +43,11 @@ public sealed class RuleCatalogTests
             """);
         var catalog = new RuleCatalog(_tempDir);
 
-        var guide = catalog.Resolve("GVM003", "raw message");
+        var guide = catalog.Resolve("CUSTOM001", "raw message");
 
         Assert.Multiple(() =>
         {
-            Assert.That(guide.Title, Is.EqualTo("GVM003 — Custom Title From Guide"));
+            Assert.That(guide.Title, Is.EqualTo("CUSTOM001 — Custom Title From Guide"));
             Assert.That(guide.Why, Is.EqualTo("Custom rationale."));
             Assert.That(guide.DoThis, Is.EqualTo(new[] { "Custom step." }));
             Assert.That(guide.Avoid, Is.EqualTo(new[] { "Custom anti-pattern." }));
