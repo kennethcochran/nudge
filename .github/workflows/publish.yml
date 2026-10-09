@@ -45,6 +45,16 @@ jobs:
       - name: Pack
         run: dotnet pack src/Nudge/Nudge.csproj -c Release --no-build -o ./artifacts --nologo
 
+      - name: Verify package version matches tag
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          if ! ls artifacts/Nudge."$expected".nupkg >/dev/null 2>&1; then
+            echo "ERROR: expected artifacts/Nudge.$expected.nupkg but found:"
+            ls artifacts/
+            exit 1
+          fi
+          echo "Package version matches tag: $expected"
+
       - name: NuGet login (OIDC -> short-lived API key)
         uses: NuGet/login@v1
         id: nuget-login
