@@ -93,6 +93,21 @@ nudge --sln YourSolution.sln --write-baseline .nudge/baseline.txt
 nudge --sln YourSolution.sln --baseline .nudge/baseline.txt
 ```
 
+**Build-time coaching:** `nudge init` installs an MSBuild logger into the repo
+so every `dotnet build` embellishes diagnostics automatically — no wrapper,
+no piping:
+
+```bash
+nudge init
+dotnet build   # <- ends with "nudge: N finding(s) — see .nudge/report.md"
+```
+
+The full coaching report lands in `.nudge/report.md`; the build itself is never
+failed by the logger. `nudge init --remove` undoes the installation.
+
+**One-off lookup:** `nudge explain S1234` prints the coaching guide for a single
+rule — handy when an agent (or human) meets a diagnostic outside a build.
+
 ## Guide packs (rulesets)
 
 The coaching guides ship as versioned **rulesets** — one per analyzer family —
