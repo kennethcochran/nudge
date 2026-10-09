@@ -6,7 +6,7 @@ namespace Nudge;
 /// <summary>
 /// Metadata for an installed coaching-guide ruleset, read from ruleset.json.
 /// </summary>
-internal sealed record RulesetManifest(
+public sealed record RulesetManifest(
     string Name,
     string Version,
     string PackageId,
@@ -35,7 +35,7 @@ internal sealed record RulesetManifest(
 /// Rulesets live under ~/.nudge/rulesets/&lt;name&gt;/, each containing
 /// ruleset.json and the guide markdown files.
 /// </summary>
-internal static class RulesetManager
+public static class RulesetManager
 {
     public static string RulesetsDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nudge", "rulesets");

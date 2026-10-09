@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nudge\Nudge.csproj" />
+    <ProjectReference Include="..\..\src\Nudge.Core\Nudge.Core.csproj" />
   </ItemGroup>
 
 </Project>

@@ -7,7 +7,7 @@ namespace Nudge;
 /// deliberately not part of the fingerprint — code motion within a file
 /// must not resurrect a snoozed finding.
 /// </summary>
-internal static class Baseline
+public static class Baseline
 {
     /// <summary>Loads baseline entries; missing file means an empty baseline.</summary>
     public static HashSet<string> Load(string? path)
