@@ -120,4 +120,34 @@ public sealed class RuleCatalogTests
             Assert.That(guide.Avoid[0], Is.EqualTo("Anti-pattern that wraps onto a second line."));
         });
     }
+
+    [Test]
+    public void UsesFallback_MatchesResolveCaseInsensitively()
+    {
+        // Guide file is S1234.md; the lookup arrives as s1234. Resolve finds
+        // it case-insensitively, so UsesFallback must agree a guide exists —
+        // otherwise callers print a guide followed by "no guide recorded".
+        File.WriteAllText(Path.Combine(_tempDir, "S1234.md"), """
+            # S1234 — Some rule
+
+            ## Why
+            Rationale.
+
+            ## Do this
+            1. Fix it.
+
+            ## AVOID
+            - Don't dodge it.
+            """);
+        var catalog = new RuleCatalog(_tempDir);
+
+        var guide = catalog.Resolve("s1234", "raw");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(guide.Title, Does.Contain("Some rule"));
+            Assert.That(catalog.UsesFallback("s1234"), Is.False);
+            Assert.That(catalog.UsesFallback("NOPE9999"), Is.True);
+        });
+    }
 }

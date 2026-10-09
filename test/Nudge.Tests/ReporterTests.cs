@@ -78,4 +78,27 @@ public sealed class ReporterTests
 
         Assert.That(report, Does.Contain("Clean — no findings."));
     }
+
+    [Test]
+    public void RenderGuide_RationaleComesFirst()
+    {
+        var guide = new RuleGuide(
+            "CUSTOM001",
+            "No LINQ in hot paths",
+            "LINQ introduces hidden allocations that hurt the tight loop.",
+            new[] { "Rewrite the loop without LINQ." },
+            new[] { "Do not just move the LINQ call into a helper." });
+
+        var rendered = Reporter.RenderGuide(guide);
+
+        Assert.That(rendered, Does.Contain("# CUSTOM001 — No LINQ in hot paths"));
+        Assert.That(rendered, Does.Contain("hidden allocations"));
+        Assert.That(rendered, Does.Contain("**Do this:**"));
+        Assert.That(rendered, Does.Contain("1. Rewrite the loop without LINQ."));
+        Assert.That(rendered, Does.Contain("**AVOID:**"));
+        Assert.That(rendered, Does.Contain("- Do not just move the LINQ call into a helper."));
+        // Rationale before remediation: the fix is shaped by understanding.
+        Assert.That(rendered.IndexOf("hidden allocations", StringComparison.Ordinal),
+            Is.LessThan(rendered.IndexOf("**Do this:**", StringComparison.Ordinal)));
+    }
 }

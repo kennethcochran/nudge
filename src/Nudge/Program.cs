@@ -15,6 +15,8 @@ internal static class Program
             return await RunRulesetCommand(args.Skip(1).ToArray());
         if (args.Length > 0 && args[0].Equals("skill", StringComparison.OrdinalIgnoreCase))
             return RunSkillCommand(args.Skip(1).ToArray());
+        if (args.Length > 0 && args[0].Equals("explain", StringComparison.OrdinalIgnoreCase))
+            return RunExplainCommand(args.Skip(1).ToArray());
 
         CliOptions options;
         try
@@ -115,6 +117,71 @@ internal static class Program
 
         Known rulesets: sonar (Nudge.Rules.Sonar — SonarSource analyzers)
         """;
+
+    private const string ExplainUsage = """
+        Usage: nudge explain <ruleId> [--rules <dir>]
+
+        Prints the coaching guide (Why / Do this / AVOID) for one diagnostic
+        rule. When no guide is recorded for the rule, prints the generic
+        fallback guide and suggests rulesets that may cover it.
+        """;
+
+    /// <summary>
+    /// The model-facing lookup: print the coaching guide for one rule ID.
+    /// Exit 0 even for fallback guides (honest output, not a failure);
+    /// exit 2 on usage errors.
+    /// </summary>
+    private static int RunExplainCommand(string[] args)
+    {
+        try
+        {
+            string? ruleId = null;
+            string? rulesDirOption = null;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--rules" && i + 1 < args.Length)
+                    rulesDirOption = args[++i];
+                else if (!args[i].StartsWith("-") && ruleId == null)
+                    ruleId = args[i];
+                else
+                    throw new CliUsageException($"Unknown argument: {args[i]}");
+            }
+            if (ruleId == null)
+                throw new CliUsageException("nudge explain requires a rule ID.");
+
+            var rootDir = FindRepoRoot();
+            var rulesDir = ResolveRulesDir(rulesDirOption, rootDir);
+            var catalog = RuleCatalog.WithInstalledRulesets(rulesDir);
+
+            var guide = catalog.Resolve(ruleId, rawMessage: string.Empty);
+            Console.Write(Reporter.RenderGuide(guide));
+
+            if (catalog.UsesFallback(ruleId))
+            {
+                var missing = AnalyzerDetector.MissingRulesets(rootDir);
+                if (missing.Count > 0)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("No specific guide is recorded for this rule. Rulesets that may cover it:");
+                    foreach (var (analyzer, ruleset) in missing.DistinctBy(x => x.Ruleset))
+                        Console.WriteLine($"  {analyzer} → nudge ruleset add {ruleset}");
+                }
+            }
+            return 0;
+        }
+        catch (CliUsageException ex)
+        {
+            if (ex.Message != null)
+                Console.Error.WriteLine($"Error: {ex.Message}\n");
+            Console.Error.WriteLine(ExplainUsage);
+            return 2;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"nudge explain failed: {ex.Message}");
+            return 2;
+        }
+    }
 
     /// <summary>
     /// Handles `nudge skill ...`: install the nudge-ruleset-gen skill into AI
@@ -265,7 +332,7 @@ internal static class Program
     private static async Task<int> RunAsync(CliOptions options)
     {
         var rootDir = FindRootDir(options);
-        var rulesDir = ResolveRulesDir(options, rootDir);
+        var rulesDir = ResolveRulesDir(options.RulesDir, rootDir);
 
         string logText;
         bool buildFailed;
@@ -357,6 +424,12 @@ internal static class Program
         if (options.Solution != null)
             return Path.GetDirectoryName(Path.GetFullPath(options.Solution)) ?? Directory.GetCurrentDirectory();
 
+        return FindRepoRoot();
+    }
+
+    /// <summary>Nearest ancestor (or self) containing a .git directory.</summary>
+    private static string FindRepoRoot()
+    {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
         while (dir != null)
         {
@@ -375,11 +448,11 @@ internal static class Program
         throw new InvalidOperationException($"No solution file found under {rootDir}. Pass --sln explicitly.");
     }
 
-    private static string? ResolveRulesDir(CliOptions options, string rootDir)
+    private static string? ResolveRulesDir(string? rulesDirOption, string rootDir)
     {
         var candidates = new[]
         {
-            options.RulesDir,
+            rulesDirOption,
             Path.Combine(Directory.GetCurrentDirectory(), "rules"),
             Path.Combine(rootDir, "rules"),
             Path.Combine(AppContext.BaseDirectory, "rules"),

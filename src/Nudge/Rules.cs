@@ -106,31 +106,42 @@ internal sealed class RuleCatalog
     /// <summary>
     /// True when resolving this rule ID would fall through to the generic
     /// fallback guide (no guide file in any rules dir, no KnownRules entry).
+    /// Uses the same case-insensitive lookup as <see cref="Resolve"/> so the
+    /// two can never disagree about whether a guide exists.
     /// </summary>
     public bool UsesFallback(string ruleId)
     {
         foreach (var rulesDir in _rulesDirs)
         {
-            if (File.Exists(Path.Combine(rulesDir, ruleId + ".md")))
+            if (FindGuideFile(rulesDir, ruleId) != null)
                 return false;
         }
         return !KnownRules.Descriptors.ContainsKey(ruleId);
     }
 
     /// <summary>
-    /// Loads the guide for <paramref name="ruleId"/> from <paramref name="rulesDir"/>,
-    /// matching the file name case-insensitively: rule IDs arrive in varying case
-    /// and Linux filesystems are case-sensitive, so "s1234" must find "S1234.md".
+    /// Finds the guide file for <paramref name="ruleId"/> in
+    /// <paramref name="rulesDir"/>, matching the file name case-insensitively:
+    /// rule IDs arrive in varying case and Linux filesystems are
+    /// case-sensitive, so "s1234" must find "S1234.md".
     /// </summary>
-    private static RuleGuide? TryLoadGuide(string rulesDir, string ruleId)
+    private static string? FindGuideFile(string rulesDir, string ruleId)
     {
         var direct = Path.Combine(rulesDir, ruleId + ".md");
         if (File.Exists(direct))
-            return ParseGuide(direct, ruleId);
+            return direct;
 
-        var match = Directory.EnumerateFiles(rulesDir, "*.md")
+        return Directory.EnumerateFiles(rulesDir, "*.md")
             .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f)
                 .Equals(ruleId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Loads the guide for <paramref name="ruleId"/> from <paramref name="rulesDir"/>.
+    /// </summary>
+    private static RuleGuide? TryLoadGuide(string rulesDir, string ruleId)
+    {
+        var match = FindGuideFile(rulesDir, ruleId);
         return match != null ? ParseGuide(match, ruleId) : null;
     }
 
@@ -154,7 +165,8 @@ internal sealed class RuleCatalog
         new(
             ruleId,
             $"Diagnostic {ruleId}",
-            $"The build reported: {rawMessage} No coaching guide is recorded for this rule yet. " +
+            (string.IsNullOrWhiteSpace(rawMessage) ? "" : $"The build reported: {rawMessage} ") +
+            "No coaching guide is recorded for this rule yet. " +
             "If this rule fires often, add a guide at rules/" + ruleId + ".md explaining why the rule matters and what a good fix looks like.",
             new[]
             {
