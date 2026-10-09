@@ -17,6 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nudge\Nudge.csproj" />
     <ProjectReference Include="..\..\src\Nudge.Core\Nudge.Core.csproj" />
+    <ProjectReference Include="..\..\src\Nudge.Logger\Nudge.Logger.csproj" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.8.3" />
   </ItemGroup>
 
 </Project>
