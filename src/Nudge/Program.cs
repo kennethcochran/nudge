@@ -358,11 +358,7 @@ internal static class Program
             buildFailed = exitCode != 0;
         }
 
-        var diagnostics = LogParser.Parse(logText)
-            .OrderBy(d => d.RuleId)
-            .ThenBy(d => d.File)
-            .ThenBy(d => d.Line)
-            .ToList();
+        var diagnostics = LogParser.Parse(logText).ToList();
 
         if (options.WriteBaseline != null)
         {
@@ -372,27 +368,14 @@ internal static class Program
         }
 
         var baseline = Baseline.Load(options.Baseline);
-        var findings = diagnostics
-            .Where(d => !Baseline.IsSnoozed(d, baseline, rootDir))
-            .ToList();
-
         var catalog = RuleCatalog.WithInstalledRulesets(rulesDir);
+        var result = CoachingEngine.Generate(diagnostics, catalog, baseline, rootDir, scopeLabel, buildFailed);
+        Console.Write(result.Report);
 
-        if (findings.Count == 0)
-        {
-            Console.Write(Reporter.RenderClean(scopeLabel));
-            return 0;
-        }
-
-        var groups = findings
-            .GroupBy(d => d.RuleId, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        Console.Write(Reporter.Render(groups, catalog, rootDir, scopeLabel, buildFailed));
-
-        SuggestMissingRulesets(groups, catalog, rootDir);
+        SuggestMissingRulesets(result.FallbackRuleIds, rootDir);
 
         // Errors mean the build failed: analyzers may not have run to completion.
-        return findings.Any(d => d.IsError) || buildFailed ? 2 : 1;
+        return result.HasErrors || buildFailed ? 2 : result.FindingCount > 0 ? 1 : 0;
     }
 
     /// <summary>
@@ -400,13 +383,9 @@ internal static class Program
     /// with available-but-uninstalled rulesets, suggest installing them.
     /// </summary>
     private static void SuggestMissingRulesets(
-        List<IGrouping<string, BuildDiagnostic>> groups, RuleCatalog catalog, string rootDir)
+        IReadOnlyList<string> fallbackRuleIds, string rootDir)
     {
-        var fallbackRules = groups
-            .Select(g => g.Key)
-            .Where(ruleId => catalog.UsesFallback(ruleId))
-            .ToList();
-        if (fallbackRules.Count == 0)
+        if (fallbackRuleIds.Count == 0)
             return;
 
         var missing = AnalyzerDetector.MissingRulesets(rootDir);
