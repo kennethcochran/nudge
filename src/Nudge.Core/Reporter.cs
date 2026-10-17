@@ -9,7 +9,7 @@ namespace Nudge;
 /// the rationale comes before the file list so the fix is shaped by
 /// understanding, not by the metric.
 /// </summary>
-internal static class Reporter
+public static class Reporter
 {
     /// <summary>
     /// Renders findings grouped by rule. <paramref name="rootDir"/> is used

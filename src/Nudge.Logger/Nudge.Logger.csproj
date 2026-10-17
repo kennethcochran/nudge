@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Nudge.Logger</RootNamespace>
+    <AssemblyName>Nudge.Logger</AssemblyName>
+    <Description>MSBuild logger that embellishes build diagnostics with nudge coaching guides.</Description>
+    <!-- Self-contained: no NuGet dependencies beyond the SDK and MSBuild.Framework. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nudge.Core\Nudge.Core.csproj" />
+    <!-- Compile-time only: MSBuild itself provides this assembly when it loads
+         the logger. ExcludeAssets=runtime keeps it out of the published tool,
+         avoiding version conflicts inside the MSBuild process. -->
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.8.3" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

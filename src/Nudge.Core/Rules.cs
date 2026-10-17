@@ -6,7 +6,7 @@ namespace Nudge;
 /// This is the Habit Hooks pattern — the linter finding is the cue,
 /// the guide is the action.
 /// </summary>
-internal sealed record RuleGuide(
+public sealed record RuleGuide(
     string RuleId,
     string Title,
     string Why,
@@ -19,7 +19,7 @@ internal sealed record RuleGuide(
 /// for a rule ID. Add entries here for project-specific analyzers; the
 /// shipped <c>rules/</c> directory already covers the SonarSource corpus.
 /// </summary>
-internal static class KnownRules
+public static class KnownRules
 {
     public static readonly IReadOnlyDictionary<string, (string Title, string Description)> Descriptors =
         new Dictionary<string, (string, string)>(StringComparer.OrdinalIgnoreCase)
@@ -42,7 +42,7 @@ internal static class KnownRules
 /// <item>A generic fallback guide that still carries the anti-gaming instruction.</item>
 /// </list>
 /// </summary>
-internal sealed class RuleCatalog
+public sealed class RuleCatalog
 {
     private readonly IReadOnlyList<string> _rulesDirs;
 

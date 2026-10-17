@@ -5,7 +5,7 @@ namespace Nudge;
 /// <summary>
 /// A single diagnostic (warning or error) parsed from MSBuild output.
 /// </summary>
-internal sealed record BuildDiagnostic(
+public sealed record BuildDiagnostic(
     string? File,
     int Line,
     int Column,
@@ -23,7 +23,7 @@ internal sealed record BuildDiagnostic(
 /// Handles located diagnostics (<c>File.cs(12,34): warning CS0219: ...</c>)
 /// and unlocated ones (<c>warning MSB3644: ...</c>, <c>proj.csproj : warning NU1900: ...</c>).
 /// </summary>
-internal static class LogParser
+public static class LogParser
 {
     // e.g. /repo/src/Foo/Bar.cs(12,34): warning S1234: Message text [/repo/src/Foo/Foo.csproj]
     // Tolerates an optional MSBuild "1>" project prefix.

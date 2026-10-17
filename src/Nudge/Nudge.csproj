@@ -24,6 +24,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Nudge.Core\Nudge.Core.csproj" />
+    <!-- The MSBuild logger ships inside the tool package so `nudge init` can
+         install it into a repo's .nudge/ directory. -->
+    <ProjectReference Include="..\Nudge.Logger\Nudge.Logger.csproj" />
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Nudge.Tests</_Parameter1>
     </AssemblyAttribute>
