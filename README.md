@@ -94,16 +94,38 @@ nudge --sln YourSolution.sln --baseline .nudge/baseline.txt
 ```
 
 **Build-time coaching:** `nudge init` installs an MSBuild logger into the repo
-so every `dotnet build` embellishes diagnostics automatically — no wrapper,
-no piping:
+so every `dotnet build` prints coaching inline, right where the diagnostic
+appears — no wrapper, no piping, no separate report to go find:
 
 ```bash
 nudge init
-dotnet build   # <- ends with "nudge: N finding(s) — see .nudge/report.md"
+dotnet build
 ```
 
-The full coaching report lands in `.nudge/report.md`; the build itself is never
-failed by the logger — nudge coaches, it doesn't gate.
+```
+Program.cs(14,21): error CS0659: 'Customer' overrides Object.Equals(object o) but does not override Object.GetHashCode()
+nudge: coaching for CS0659 — Override Equals Without GetHashCode
+nudge: Why: Equals and GetHashCode are a contract: equal objects must produce equal hash codes...
+nudge: Do this:
+nudge:   1. Override GetHashCode to combine the same fields Equals compares, e.g. HashCode.Combine(X, Y).
+nudge:   ...
+nudge: AVOID:
+nudge:   - Do not implement GetHashCode() => 0; ...
+```
+
+A rule's full guide prints with its first diagnostic in a build; later
+diagnostics for the same rule get a one-line reminder. Findings in
+`.nudge/baseline.txt` print no coaching — they're snoozed. The build itself
+is never failed by the logger — nudge coaches, it doesn't gate. (Earlier
+versions wrote a `.nudge/report.md` report and an end-of-build pointer line;
+the inline design replaces that — a stale `report.md` is safe to delete.)
+
+Prefer a quieter output? `nudge init --console-logger` goes one step
+further: the nudge logger replaces the default console logger
+(`/noconsolelogger`) and prints every diagnostic itself in canonical
+MSBuild format, coaching inline, plus the end-of-build summary. It is not
+a byte-for-byte clone of the default logger — ordinary build chatter
+(project/target/task messages) is not reproduced.
 
 What `nudge init` actually installs:
 
@@ -111,7 +133,8 @@ What `nudge init` actually installs:
   Re-running `nudge init` after a nudge upgrade refreshes them.
 - A `/logger:` line (plus a marker comment) in `Directory.Build.rsp` at the
   repo root, merged with any content already there. The line points MSBuild
-  at the payload and at the baseline, `.nudge/baseline.txt`.
+  at the payload and at the baseline, `.nudge/baseline.txt`. Console mode
+  adds a `/noconsolelogger` line alongside.
 
 > **Trust note:** an MSBuild logger is code that executes inside every build
 > of the repo. That is exactly why installation is an explicit, per-repo
@@ -124,7 +147,7 @@ What `nudge init` actually installs:
 Which builds does this cover? `dotnet build` on the .NET 10 SDK (the same
 requirement as the nudge tool itself) — including CI and agent harnesses,
 which build from the command line. Two honest gaps: Visual Studio's
-in-process IDE builds ignore `Directory.Build.rsp` entirely (no report;
+in-process IDE builds ignore `Directory.Build.rsp` entirely (no coaching;
 build from the command line, or use `nudge explain` below), and MSBuild
 hosts running on .NET Framework or an older SDK can't load a .NET 10 logger
 at all — run `nudge init --remove` before building there.
@@ -139,9 +162,10 @@ rule — handy when an agent (or human) meets a diagnostic outside a build.
 
 **The agent loop, as a skill:** `nudge skill install` also installs the
 `nudge-coaching` skill, which teaches an AI coding agent the loop this tool
-is built for: build → read `.nudge/report.md` → fix the root cause the guide
-names (never the dodge in its AVOID section) → rebuild. See
-`.agents/skills/nudge-coaching/` in this repo.
+is built for: build → fix the root cause the inline coaching names (never
+the dodge in its AVOID section) → rebuild, with `nudge explain` for
+diagnostics met outside a build. See `.agents/skills/nudge-coaching/` in
+this repo.
 
 ## Guide packs (rulesets)
 

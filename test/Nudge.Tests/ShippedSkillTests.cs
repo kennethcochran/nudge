@@ -7,7 +7,8 @@ namespace Nudge.Tests;
 /// skill the installer knows about must exist there, its folder name must
 /// match its frontmatter <c>name</c> (harnesses require this), and the
 /// frontmatter must carry a discovery <c>description</c>. The coaching skill
-/// additionally pins the loop it teaches: report → explain → fix → rebuild.
+/// additionally pins the loop it teaches: build (coaching prints inline) →
+/// explain for uncovered diagnostics → fix → rebuild.
 /// </summary>
 [TestFixture]
 public sealed class ShippedSkillTests
@@ -45,15 +46,15 @@ public sealed class ShippedSkillTests
     }
 
     [Test]
-    public void CoachingSkill_TeachesTheReportLoop()
+    public void CoachingSkill_TeachesTheInlineLoop()
     {
         var text = File.ReadAllText(
             Path.Combine(FindSkillDir("nudge-coaching"), "SKILL.md"));
 
         Assert.Multiple(() =>
         {
-            Assert.That(text, Does.Contain(".nudge/report.md"),
-                "coaching skill must point agents at the build report");
+            Assert.That(text, Does.Contain("in the build output itself"),
+                "coaching skill must teach that coaching prints inline with the diagnostic");
             Assert.That(text, Does.Contain("nudge explain"),
                 "coaching skill must cover the on-demand guide lookup");
             Assert.That(text, Does.Contain("nudge init"),

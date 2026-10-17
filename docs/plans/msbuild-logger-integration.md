@@ -10,10 +10,25 @@ fixture under time/authority pressure — both arms fixed all findings at the
 root and refused suppression; the report's own AVOID text confounds the
 suppression axis, while the skill arm showed the added process discipline:
 `nudge explain` lookups, fallback-guide handling, forced-rebuild
-verification). Follow-up identified during slice 2 review: a
-multi-targeted (netstandard2.0) logger so .NET Framework MSBuild and older
-SDK hosts can load it — today the supported host is `dotnet build` on the
-.NET 10 SDK, as documented in the README.
+verification). A discovery test the same day (neutral "fix the broken
+build" prompt, CS0659 fixture, skill-installed vs logger-only arms) showed
+the pointer bridge being crossed in both arms — under the caveat that the
+test agents inherited nudge-saturated context; a cold agent fixing a known
+error from the raw diagnostic line remains able to bypass the report
+entirely, and the end-of-build pointer is exactly what grep/tail-filtered
+build workflows discard. **Kenneth's decision (2026-10-17): inline
+coaching replaces the report loop.** The logger now prints each guided
+diagnostic's full guide into the build output at diagnostic time
+(one-line reminder for repeat rules; silence for baselined findings and
+rules without a guide), and no longer writes `.nudge/report.md` or the
+pointer. Open decision 1 below is superseded accordingly. The takeover
+variant became an opt-in: `nudge init --console-logger` adds
+`/noconsolelogger` and the logger prints every diagnostic itself
+(canonical format, coaching inline) plus the summary. The coaching skill
+was rewritten around the inline loop. Follow-up identified during slice 2
+review: a multi-targeted (netstandard2.0) logger so .NET Framework
+MSBuild and older SDK hosts can load it — today the supported host is
+`dotnet build` on the .NET 10 SDK, as documented in the README.
 **Goal:** every `dotnet build` that processes the repository's
 `Directory.Build.rsp` automatically embellishes diagnostics with nudge coaching
 guides, and models can pull a guide on demand. (Builds that skip response-file
@@ -83,12 +98,17 @@ Work:
   output byte-identical before/after.
 - At build end: full report to `.nudge/report.md` + one-line console pointer.
   The logger never fails the build — coaching, not gating.
+  (Superseded 2026-10-17: coaching prints inline at diagnostic time; no
+  report file, no pointer. Optional console mode via
+  `nudge init --console-logger`.)
 - Packaging: logger DLL ships inside the nupkg; `init` locates it in the tool
   store. `init` merges with an existing `Directory.Build.rsp` (never clobbers),
   is idempotent (re-run refreshes the DLL after upgrades), and supports
   `--remove`.
 - Tests: logger against a fake event source (dedupe, baseline, report written);
   integration test — init a scratch repo, `dotnet build`, assert report + pointer.
+  (Updated 2026-10-17: logger tests assert the inline coaching output and
+  the console-mode summary; no report is written.)
 
 Acceptance: fresh clone → `nudge init` → `dotnet build` → coaching report
 appears with zero changes to how the user builds.
@@ -98,6 +118,8 @@ appears with zero changes to how the user builds.
 - `nudge-coaching` skill next to `nudge-ruleset-gen`, installed via
   `nudge skill install`: the loop is build → read `.nudge/report.md` (or
   `nudge explain <rule>`) → fix the root cause → rebuild.
+  (Superseded 2026-10-17: the loop is build → fix per the inline coaching →
+  rebuild, with `nudge explain` for diagnostics met outside a build.)
 - README: the init flow, what's installed, the trust note (an auto-loaded DLL
   is code execution on build — `init` being an explicit per-repo opt-in is
   load-bearing), disable via deleting the `.rsp` or `/noautoresponse`.
@@ -112,8 +134,11 @@ After slice 2 ships: replace GameVM's `--stdin` CI step with the real thing
 
 ## Open decisions (Kenneth's call)
 
-1. Report as console-pointer + `.nudge/report.md` file (recommended — inline
-   embellishment breaks tooling that parses build output).
+1. ~~Report as console-pointer + `.nudge/report.md` file (recommended — inline
+   embellishment breaks tooling that parses build output).~~ Superseded
+   2026-10-17 by Kenneth's decision for inline coaching (see Status): the
+   discovery risk outweighed the parser risk; genuine diagnostic lines stay
+   byte-identical so pattern-based parsers are unaffected.
 2. Logger never fails the build (recommended — coaching, not gating).
 3. Logger DLL committed under `.nudge/`, refreshed by re-running `init`.
 
