@@ -146,6 +146,36 @@ internal static class Program
         `nudge init --remove` undoes the installation (keeps .nudge/baseline.txt).
         """;
 
+    /// <summary>Marker comment identifying the lines `nudge init` manages in Directory.Build.rsp.</summary>
+    internal const string InitMarker = "# Added by `nudge init`";
+
+    /// <summary>
+    /// The Directory.Build.rsp line that loads the logger. Both paths are
+    /// quoted: MSBuild expands %MSBuildThisFileDirectory% before it splits
+    /// response-file lines on unquoted whitespace, so an unquoted path breaks
+    /// every build (MSB4017, logger assembly not found) in a repo whose path
+    /// contains spaces.
+    /// </summary>
+    internal const string InitLoggerLine =
+        "/logger:Nudge.Logger.NudgeLogger,\"%MSBuildThisFileDirectory%.nudge/Nudge.Logger.dll\"" +
+        ";baseline=\"%MSBuildThisFileDirectory%.nudge/baseline.txt\"";
+
+    /// <summary>
+    /// True for lines `nudge init` owns in Directory.Build.rsp: its marker
+    /// comment, or the logger registration it wrote. Lines that merely mention
+    /// Nudge.Logger (a user's own comment, an unrelated registration) are not
+    /// init's to strip or to count as an installation.
+    /// </summary>
+    internal static bool IsInitManagedLine(string line)
+    {
+        if (line.StartsWith(InitMarker, StringComparison.Ordinal))
+            return true;
+        var trimmed = line.TrimStart();
+        return (trimmed.StartsWith("/logger:", StringComparison.OrdinalIgnoreCase)
+             || trimmed.StartsWith("-logger:", StringComparison.OrdinalIgnoreCase))
+            && trimmed.Contains("Nudge.Logger.NudgeLogger", StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// The on-ramp for build-time coaching: install the MSBuild logger into
     /// the repo. Explicit opt-in — an auto-loaded logger DLL is code execution
@@ -168,14 +198,8 @@ internal static class Program
             var nudgeDir = Path.Combine(rootDir, ".nudge");
             var rspPath = Path.Combine(rootDir, "Directory.Build.rsp");
 
-            // Lines init manages inside Directory.Build.rsp, identified by marker.
-            const string marker = "# Added by `nudge init`";
-            var loggerLine =
-                "/logger:Nudge.Logger.NudgeLogger,%MSBuildThisFileDirectory%.nudge/Nudge.Logger.dll" +
-                ";baseline=%MSBuildThisFileDirectory%.nudge/baseline.txt";
-
             if (remove)
-                return RemoveInit(nudgeDir, rspPath, marker);
+                return RemoveInit(nudgeDir, rspPath);
 
             Directory.CreateDirectory(nudgeDir);
 
@@ -194,19 +218,16 @@ internal static class Program
             var lines = File.Exists(rspPath)
                 ? File.ReadAllLines(rspPath).ToList()
                 : new List<string>();
-            var alreadyInstalled = lines.Any(l => l.Contains("Nudge.Logger", StringComparison.Ordinal));
+            var alreadyInstalled = lines.Any(IsInitManagedLine);
 
             if (!alreadyInstalled || force)
             {
                 // Strip any previous init-managed lines before writing fresh ones.
-                lines = lines
-                    .Where(l => !l.StartsWith(marker, StringComparison.Ordinal)
-                             && !l.Contains("Nudge.Logger", StringComparison.Ordinal))
-                    .ToList();
+                lines = lines.Where(l => !IsInitManagedLine(l)).ToList();
                 if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
                     lines.Add(string.Empty);
-                lines.Add(marker + " — loads the nudge MSBuild logger for coaching diagnostics. Remove with `nudge init --remove`.");
-                lines.Add(loggerLine);
+                lines.Add(InitMarker + " — loads the nudge MSBuild logger for coaching diagnostics. Remove with `nudge init --remove`.");
+                lines.Add(InitLoggerLine);
                 File.WriteAllLines(rspPath, lines);
             }
 
@@ -230,25 +251,18 @@ internal static class Program
         }
     }
 
-    private static int RemoveInit(string nudgeDir, string rspPath, string marker)
+    private static int RemoveInit(string nudgeDir, string rspPath)
     {
         var removed = new List<string>();
 
-        foreach (var dll in new[] { "Nudge.Logger.dll", "Nudge.Core.dll" })
-        {
-            var path = Path.Combine(nudgeDir, dll);
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-                removed.Add(path);
-            }
-        }
-
+        // Unregister before deleting the payload: if removal is interrupted
+        // after this point, the repo is merely un-coached; deleting the DLLs
+        // first would leave a registered logger that no longer exists, which
+        // fails every build at logger-load time.
         if (File.Exists(rspPath))
         {
             var remaining = File.ReadAllLines(rspPath)
-                .Where(l => !l.StartsWith(marker, StringComparison.Ordinal)
-                         && !l.Contains("Nudge.Logger", StringComparison.Ordinal))
+                .Where(l => !IsInitManagedLine(l))
                 .ToList();
             if (remaining.All(string.IsNullOrWhiteSpace))
             {
@@ -259,6 +273,16 @@ internal static class Program
             {
                 File.WriteAllLines(rspPath, remaining);
                 removed.Add(rspPath + " (nudge lines removed)");
+            }
+        }
+
+        foreach (var dll in new[] { "Nudge.Logger.dll", "Nudge.Core.dll" })
+        {
+            var path = Path.Combine(nudgeDir, dll);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                removed.Add(path);
             }
         }
 

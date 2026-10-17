@@ -121,7 +121,13 @@ public sealed class NudgeLogger : ILogger
             var eq = part.IndexOf('=');
             if (eq <= 0)
                 continue;
-            result[part.Substring(0, eq).Trim()] = part.Substring(eq + 1).Trim();
+            var value = part.Substring(eq + 1).Trim();
+            // MSBuild normally strips the quotes `nudge init` writes around
+            // paths in Directory.Build.rsp; a host that passes them through
+            // must not turn the quoted path into a literal filename.
+            if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+                value = value[1..^1];
+            result[part.Substring(0, eq).Trim()] = value;
         }
         return result;
     }

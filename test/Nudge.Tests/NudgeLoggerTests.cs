@@ -115,6 +115,25 @@ public sealed class NudgeLoggerTests
     }
 
     [Test]
+    public void Finish_QuotedBaselineParameter_WritesReport()
+    {
+        // `nudge init` quotes the baseline path in Directory.Build.rsp so repo
+        // paths with spaces survive MSBuild's response-file parsing. A host
+        // that passes the quotes through to the logger must still work.
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        var baselinePath = Path.Combine(_tempDir, ".nudge", "baseline.txt");
+        var logger = new NudgeLogger { Parameters = $"baseline=\"{baselinePath}\"" };
+        var events = new FakeEventSource();
+        logger.Initialize(events);
+
+        events.RaiseWarning("T9999", "Something smells.", Path.Combine(_tempDir, "src", "Foo.cs"), 12);
+        events.RaiseBuildFinished();
+
+        Assert.That(File.Exists(Path.Combine(_tempDir, ".nudge", "report.md")), Is.True,
+            "report.md should be written next to the baseline even when the parameter value is quoted");
+    }
+
+    [Test]
     public void Finish_PrintsOneLinePointer()
     {
         WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
