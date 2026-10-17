@@ -351,8 +351,9 @@ internal static class Program
     }
 
     /// <summary>
-    /// Handles `nudge skill ...`: install the nudge-ruleset-gen skill into AI
-    /// coding harnesses so their agents can generate rulesets for uncovered analyzers.
+    /// Handles `nudge skill ...`: install the nudge skills (nudge-ruleset-gen,
+    /// nudge-coaching) into AI coding harnesses. With no skill name, install
+    /// and uninstall operate on every shipped skill; naming one selects it.
     /// </summary>
     private static int RunSkillCommand(string[] args)
     {
@@ -375,7 +376,7 @@ internal static class Program
                     var installed = SkillInstaller.ListInstalled(
                         SkillInstaller.HomeDir, Directory.GetCurrentDirectory());
                     if (installed.Count == 0)
-                        Console.WriteLine("Skill not installed anywhere. Try: nudge skill install");
+                        Console.WriteLine("No skills installed anywhere. Try: nudge skill install");
                     foreach (var dir in installed)
                         Console.WriteLine(dir);
                     return 0;
@@ -405,37 +406,47 @@ internal static class Program
 
     private static int RunSkillInstall(string[] args)
     {
-        var (harnessNames, globalScope, force, dryRun) = ParseSkillTargetArgs(args, "install");
+        var (skills, harnessNames, globalScope, force, dryRun) = ParseSkillTargetArgs(args, "install");
 
-        var source = SkillInstaller.FindSkillSource()
-            ?? throw new InvalidOperationException(
-                "Skill files not found next to the nudge binary — reinstall the tool.");
-        var targets = SkillInstaller.ResolveTargets(
-            harnessNames, globalScope, SkillInstaller.HomeDir, Directory.GetCurrentDirectory());
-        SkillInstaller.Install(source, targets, force, dryRun, Console.WriteLine);
+        foreach (var skill in skills)
+        {
+            var source = SkillInstaller.FindSkillSource(skill)
+                ?? throw new InvalidOperationException(
+                    $"Skill files for '{skill}' not found next to the nudge binary — reinstall the tool.");
+            var targets = SkillInstaller.ResolveTargets(
+                harnessNames, globalScope, SkillInstaller.HomeDir, Directory.GetCurrentDirectory(), skill);
+            Console.WriteLine($"{skill}:");
+            SkillInstaller.Install(source, targets, force, dryRun, Console.WriteLine);
+        }
         if (!dryRun)
-            Console.WriteLine("Restart your harness session so it picks up the new skill.");
+            Console.WriteLine("Restart your harness session so it picks up the new skills.");
         return 0;
     }
 
     private static int RunSkillUninstall(string[] args)
     {
-        var (harnessNames, globalScope, _, dryRun) = ParseSkillTargetArgs(args, "uninstall");
-        var targets = SkillInstaller.ResolveTargets(
-            harnessNames, globalScope, SkillInstaller.HomeDir, Directory.GetCurrentDirectory());
-        SkillInstaller.Uninstall(targets, dryRun, Console.WriteLine);
+        var (skills, harnessNames, globalScope, _, dryRun) = ParseSkillTargetArgs(args, "uninstall");
+        foreach (var skill in skills)
+        {
+            var targets = SkillInstaller.ResolveTargets(
+                harnessNames, globalScope, SkillInstaller.HomeDir, Directory.GetCurrentDirectory(), skill);
+            Console.WriteLine($"{skill}:");
+            SkillInstaller.Uninstall(targets, dryRun, Console.WriteLine);
+        }
         return 0;
     }
 
     /// <summary>
-    /// Parses the target-selection flags shared by install and uninstall:
-    /// --global/--project scope, --harness (repeatable, comma-separated),
-    /// --all, plus --force/--dry-run for install.
+    /// Parses the target-selection arguments shared by install and uninstall:
+    /// an optional skill name (absent = every shipped skill), --global/--project
+    /// scope, --harness (repeatable, comma-separated), --all, plus
+    /// --force/--dry-run for install.
     /// </summary>
-    private static (IReadOnlyList<string> Harnesses, bool GlobalScope, bool Force, bool DryRun)
+    private static (IReadOnlyList<string> Skills, IReadOnlyList<string> Harnesses, bool GlobalScope, bool Force, bool DryRun)
         ParseSkillTargetArgs(string[] args, string verb)
     {
         var harnessNames = new List<string>();
+        string? skillName = null;
         var globalScope = true;
         var force = false;
         var dryRun = false;
@@ -467,6 +478,14 @@ internal static class Program
                         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                     break;
                 default:
+                    if (!args[i].StartsWith("-", StringComparison.Ordinal) && skillName == null)
+                    {
+                        skillName = SkillInstaller.KnownSkills.FirstOrDefault(s =>
+                            s.Equals(args[i], StringComparison.OrdinalIgnoreCase))
+                            ?? throw new CliUsageException(
+                                $"Unknown skill '{args[i]}'. Known skills: {string.Join(", ", SkillInstaller.KnownSkills)}");
+                        break;
+                    }
                     throw new CliUsageException($"Unknown argument: {args[i]}");
             }
         }
@@ -476,23 +495,31 @@ internal static class Program
             : harnessNames.Count > 0
                 ? harnessNames
                 : SkillInstaller.DefaultHarnesses;
-        return (selected, globalScope, force, dryRun);
+        IReadOnlyList<string> skills = skillName != null
+            ? new List<string> { skillName }
+            : SkillInstaller.KnownSkills;
+        return (skills, selected, globalScope, force, dryRun);
     }
 
     private const string SkillUsage = """
-        nudge skill — install the nudge-ruleset-gen skill into AI coding harnesses.
+        nudge skill — install the nudge skills into AI coding harnesses.
+
+        Skills:
+          nudge-coaching     The build → report → fix → rebuild loop for repos using nudge
+          nudge-ruleset-gen  Generate coaching-guide rulesets for uncovered analyzers
 
         Usage:
-          nudge skill install [--global|--project] [--harness <name>...] [--all] [--force] [--dry-run]
-          nudge skill uninstall [--global|--project] [--harness <name>...] [--all] [--dry-run]
-          nudge skill list          Show where the skill is currently installed
+          nudge skill install [<skill>] [--global|--project] [--harness <name>...] [--all] [--force] [--dry-run]
+          nudge skill uninstall [<skill>] [--global|--project] [--harness <name>...] [--all] [--dry-run]
+          nudge skill list          Show where the skills are currently installed
           nudge skill harnesses     Show known harnesses and their skill directories
 
-        With no --harness, installs to the universal pair (~/.agents/skills and
+        With no <skill>, install and uninstall cover both skills. With no
+        --harness, installs to the universal pair (~/.agents/skills and
         ~/.claude/skills), which every harness in the table reads except Claude
         Code — hence the second copy. --project installs into the current
         directory instead of your home directory. Restart the harness session
-        after installing so it discovers the new skill.
+        after installing so it discovers the new skills.
         """;
 
 

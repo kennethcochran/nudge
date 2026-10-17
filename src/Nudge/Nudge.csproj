@@ -48,6 +48,11 @@
       <Link>skills\nudge-ruleset-gen\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Same for the nudge-coaching skill (the build → report → fix → rebuild loop). -->
+    <None Include="..\..\.agents\skills\nudge-coaching\**\*">
+      <Link>skills\nudge-coaching\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\..\README.md">
       <Pack>true</Pack>
       <PackagePath>README.md</PackagePath>
