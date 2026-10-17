@@ -1,6 +1,6 @@
 ---
 name: nudge-ruleset-gen
-description: "Generate a Nudge coaching-guide ruleset for a Roslyn analyzer or static analysis tool. Use when the user asks to create rules for an analyzer (e.g. 'make a nudge ruleset for Meziantou.Analyzer') or to extend Nudge to a new diagnostic source."
+description: "Use when the user asks to create a Nudge ruleset for a Roslyn analyzer or static analysis tool (e.g. 'make a nudge ruleset for Meziantou.Analyzer'), or to extend Nudge's coaching guides to a new diagnostic source."
 ---
 
 # Nudge Ruleset Generator

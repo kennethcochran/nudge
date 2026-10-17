@@ -1,6 +1,6 @@
 ---
 name: nudge-coaching
-description: "Fix .NET build diagnostics using Nudge coaching guides. Use when a repo has nudge installed (a .nudge/ directory, a 'nudge:' pointer line in build output, or Directory.Build.rsp at the repo root), when a build produces compiler/analyzer warnings or errors, or when the user asks you to clean up build warnings in a .NET repo."
+description: "Use when building or fixing diagnostics in a .NET repository that uses Nudge (build output ends with a 'nudge:' pointer line, a .nudge/report.md exists, or Directory.Build.rsp registers Nudge.Logger), and when working through compiler or analyzer warnings or errors (CS####, S####, CA####) in a .NET repo, including diagnostics pasted from an IDE or CI log."
 ---
 
 # Nudge Coaching Loop

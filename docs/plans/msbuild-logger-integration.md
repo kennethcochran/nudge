@@ -1,7 +1,16 @@
 # Nudge build-pipeline integration plan
 
 **Status:** slices 1–3 implemented (2026-10-09 / 2026-10-17); dogfooding in
-GameVM is the remaining step. Follow-up identified during slice 2 review: a
+GameVM is the remaining step. Post-review remediation on PR #11 (per the
+Anthropic / superpowers / Pocock / VS Code skill-writing guidance):
+`INSTALL.md` removed from both skill folders (install guidance consolidated
+in the README), descriptions rewritten trigger-first, and the coaching skill
+pressure-tested on 2026-10-17 (baseline vs with-skill agent on a dirty
+fixture under time/authority pressure — both arms fixed all findings at the
+root and refused suppression; the report's own AVOID text confounds the
+suppression axis, while the skill arm showed the added process discipline:
+`nudge explain` lookups, fallback-guide handling, forced-rebuild
+verification). Follow-up identified during slice 2 review: a
 multi-targeted (netstandard2.0) logger so .NET Framework MSBuild and older
 SDK hosts can load it — today the supported host is `dotnet build` on the
 .NET 10 SDK, as documented in the README.
