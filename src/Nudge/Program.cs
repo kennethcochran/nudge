@@ -134,12 +134,17 @@ internal static class Program
     /// exit 2 on usage errors.
     /// </summary>
     private const string InitUsage = """
-        Usage: nudge init [--force] [--remove]
+        Usage: nudge init [--force] [--remove] [--console-logger]
 
         Installs the nudge MSBuild logger into this repo so every `dotnet build`
-        embellishes diagnostics with coaching guides:
+        prints coaching inline, next to each diagnostic it applies to:
           - copies Nudge.Logger.dll (and Nudge.Core.dll) into .nudge/
           - writes Directory.Build.rsp at the repo root loading the logger
+
+        With --console-logger, the logger additionally replaces the default
+        console logger (/noconsolelogger): it prints every diagnostic itself,
+        coaching inline, plus the end-of-build summary. A quieter, coaching-
+        first output; not a byte-for-byte clone of the default logger.
 
         Idempotent: re-running refreshes the logger DLLs. Merges with an
         existing Directory.Build.rsp instead of overwriting it.
@@ -161,6 +166,23 @@ internal static class Program
         ";baseline=\"%MSBuildThisFileDirectory%.nudge/baseline.txt\"";
 
     /// <summary>
+    /// The logger registration for console mode (<c>nudge init
+    /// --console-logger</c>): the default line plus the logger's
+    /// <c>console=true</c> parameter. Written together with
+    /// <see cref="InitNoConsoleLine"/> so nudge's logger is the build's only
+    /// console output.
+    /// </summary>
+    internal const string InitConsoleLoggerLine = InitLoggerLine + ";console=true";
+
+    /// <summary>
+    /// The response-file switch that silences the default console logger,
+    /// written only in console mode. Bare and unremarkable on its own, so
+    /// init claims it as managed only in a file that carries an init
+    /// installation (see <see cref="StripInitLines"/>).
+    /// </summary>
+    internal const string InitNoConsoleLine = "/noconsolelogger";
+
+    /// <summary>
     /// True for lines `nudge init` owns in Directory.Build.rsp: its marker
     /// comment, or the logger registration it wrote. Lines that merely mention
     /// Nudge.Logger (a user's own comment, an unrelated registration) are not
@@ -177,6 +199,22 @@ internal static class Program
     }
 
     /// <summary>
+    /// Removes every line `nudge init` owns from a Directory.Build.rsp. The
+    /// console-mode <c>/noconsolelogger</c> line counts as init's only when
+    /// the file carries an init installation — the switch is generic, and a
+    /// user's own use of it in a repo without the logger is theirs to keep.
+    /// </summary>
+    internal static List<string> StripInitLines(IEnumerable<string> lines)
+    {
+        var list = lines.ToList();
+        var isInitInstall = list.Any(IsInitManagedLine);
+        return list.Where(l => !IsInitManagedLine(l)
+            && !(isInitInstall
+                 && l.Trim().Equals(InitNoConsoleLine, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+    }
+
+    /// <summary>
     /// The on-ramp for build-time coaching: install the MSBuild logger into
     /// the repo. Explicit opt-in — an auto-loaded logger DLL is code execution
     /// on build, so this never happens without the user asking for it.
@@ -187,10 +225,12 @@ internal static class Program
         {
             var remove = false;
             var force = false;
+            var consoleLogger = false;
             foreach (var a in args)
             {
                 if (a == "--remove") remove = true;
                 else if (a == "--force") force = true;
+                else if (a == "--console-logger") consoleLogger = true;
                 else throw new CliUsageException($"Unknown argument: {a}");
             }
 
@@ -223,18 +263,22 @@ internal static class Program
             if (!alreadyInstalled || force)
             {
                 // Strip any previous init-managed lines before writing fresh ones.
-                lines = lines.Where(l => !IsInitManagedLine(l)).ToList();
+                lines = StripInitLines(lines);
                 if (lines.Count > 0 && !string.IsNullOrWhiteSpace(lines[^1]))
                     lines.Add(string.Empty);
                 lines.Add(InitMarker + " — loads the nudge MSBuild logger for coaching diagnostics. Remove with `nudge init --remove`.");
-                lines.Add(InitLoggerLine);
+                if (consoleLogger)
+                    lines.Add(InitNoConsoleLine);
+                lines.Add(consoleLogger ? InitConsoleLoggerLine : InitLoggerLine);
                 File.WriteAllLines(rspPath, lines);
             }
 
             Console.WriteLine($"nudge init: logger installed.");
             Console.WriteLine($"  logger:  {Path.Combine(nudgeDir, "Nudge.Logger.dll")}");
             Console.WriteLine($"  rsp:     {rspPath}");
-            Console.WriteLine($"  Every `dotnet build` under {rootDir} now gets coaching diagnostics.");
+            Console.WriteLine(consoleLogger
+                ? $"  Every `dotnet build` under {rootDir} now prints diagnostics through the nudge logger, coaching inline."
+                : $"  Every `dotnet build` under {rootDir} now gets coaching inline, next to each diagnostic.");
             return 0;
         }
         catch (CliUsageException ex)
@@ -261,9 +305,7 @@ internal static class Program
         // fails every build at logger-load time.
         if (File.Exists(rspPath))
         {
-            var remaining = File.ReadAllLines(rspPath)
-                .Where(l => !IsInitManagedLine(l))
-                .ToList();
+            var remaining = StripInitLines(File.ReadAllLines(rspPath));
             if (remaining.All(string.IsNullOrWhiteSpace))
             {
                 File.Delete(rspPath);
@@ -492,7 +534,7 @@ internal static class Program
         nudge skill — install the nudge skills into AI coding harnesses.
 
         Skills:
-          nudge-coaching     The build → report → fix → rebuild loop for repos using nudge
+          nudge-coaching     The build → fix → rebuild loop for repos using nudge (coaching prints inline)
           nudge-ruleset-gen  Generate coaching-guide rulesets for uncovered analyzers
 
         Usage:
