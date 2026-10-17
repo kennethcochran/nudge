@@ -5,7 +5,8 @@ The skill follows the [Agent Skills open standard](https://agentskills.io)
 work in every harness below. The easy path is the nudge tool itself:
 
 ```bash
-nudge skill install                  # global, universal pair (see below)
+nudge skill install                  # both shipped skills, global, universal pair (see below)
+nudge skill install nudge-ruleset-gen  # just this skill
 nudge skill install --project        # into the current repo instead
 nudge skill install --harness cursor,windsurf
 nudge skill install --all            # every known harness

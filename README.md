@@ -103,10 +103,45 @@ dotnet build   # <- ends with "nudge: N finding(s) — see .nudge/report.md"
 ```
 
 The full coaching report lands in `.nudge/report.md`; the build itself is never
-failed by the logger. `nudge init --remove` undoes the installation.
+failed by the logger — nudge coaches, it doesn't gate.
+
+What `nudge init` actually installs:
+
+- `.nudge/Nudge.Logger.dll` and `.nudge/Nudge.Core.dll` — the logger payload.
+  Re-running `nudge init` after a nudge upgrade refreshes them.
+- A `/logger:` line (plus a marker comment) in `Directory.Build.rsp` at the
+  repo root, merged with any content already there. The line points MSBuild
+  at the payload and at the baseline, `.nudge/baseline.txt`.
+
+> **Trust note:** an MSBuild logger is code that executes inside every build
+> of the repo. That is exactly why installation is an explicit, per-repo
+> opt-in — `nudge init` is a command a human runs, never something that
+> happens as a side effect — and why the payload sits in `.nudge/`, in plain
+> sight, instead of a global hook. Committing `Directory.Build.rsp` and
+> `.nudge/` shares the setup with everyone who clones the repo, loggers and
+> all; review it like any other build input.
+
+Which builds does this cover? `dotnet build` on the .NET 10 SDK (the same
+requirement as the nudge tool itself) — including CI and agent harnesses,
+which build from the command line. Two honest gaps: Visual Studio's
+in-process IDE builds ignore `Directory.Build.rsp` entirely (no report;
+build from the command line, or use `nudge explain` below), and MSBuild
+hosts running on .NET Framework or an older SDK can't load a .NET 10 logger
+at all — run `nudge init --remove` before building there.
+
+Turning it off, in descending order of permanence: `nudge init --remove`
+(undoes the install, keeps your `baseline.txt`), delete the nudge lines from
+`Directory.Build.rsp`, or skip response files for a single build with
+`dotnet build /noautoresponse`.
 
 **One-off lookup:** `nudge explain S1234` prints the coaching guide for a single
 rule — handy when an agent (or human) meets a diagnostic outside a build.
+
+**The agent loop, as a skill:** `nudge skill install` also installs the
+`nudge-coaching` skill, which teaches an AI coding agent the loop this tool
+is built for: build → read `.nudge/report.md` → fix the root cause the guide
+names (never the dodge in its AVOID section) → rebuild. See
+`.agents/skills/nudge-coaching/` in this repo.
 
 ## Guide packs (rulesets)
 
@@ -161,9 +196,11 @@ Built guides for an analyzer nobody's covered yet? This repo ships the skill
 for it: `.agents/skills/nudge-ruleset-gen/` walks through the whole process —
 extracting the analyzer's diagnostic descriptors, researching each rule,
 writing the guides, validating them, and packaging the ruleset. Get it into
-your AI harness with `nudge skill install` (see the skill's `INSTALL.md` for
-the per-harness details). Open a PR with the new ruleset and include the
-validation report — the methodology is what gets reviewed, not just the guides.
+your AI harness with `nudge skill install` (which installs both shipped
+skills — this one and `nudge-coaching`; name one to install just that one —
+see each skill's `INSTALL.md` for the per-harness details). Open a PR with
+the new ruleset and include the validation report — the methodology is what
+gets reviewed, not just the guides.
 
 ## The fine print
 

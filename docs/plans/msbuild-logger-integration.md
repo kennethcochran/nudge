@@ -1,6 +1,10 @@
 # Nudge build-pipeline integration plan
 
-**Status:** approved for implementation (2026-10-09)
+**Status:** slices 1–3 implemented (2026-10-09 / 2026-10-17); dogfooding in
+GameVM is the remaining step. Follow-up identified during slice 2 review: a
+multi-targeted (netstandard2.0) logger so .NET Framework MSBuild and older
+SDK hosts can load it — today the supported host is `dotnet build` on the
+.NET 10 SDK, as documented in the README.
 **Goal:** every `dotnet build` that processes the repository's
 `Directory.Build.rsp` automatically embellishes diagnostics with nudge coaching
 guides, and models can pull a guide on demand. (Builds that skip response-file
@@ -52,8 +56,12 @@ ways (fallback is honest output, not a failure), exit 2 on usage errors.
 writes `Directory.Build.rsp` at the repo root:
 
 ```
-/logger:NudgeLogger,%MSBuildThisFileDirectory%.nudge/Nudge.Logger.dll;baseline=.nudge/baseline.txt
+/logger:NudgeLogger,"%MSBuildThisFileDirectory%.nudge/Nudge.Logger.dll";baseline="%MSBuildThisFileDirectory%.nudge/baseline.txt"
 ```
+
+(Paths are quoted: MSBuild expands the token before splitting .rsp lines on
+unquoted whitespace, so unquoted paths break builds in repos whose path
+contains spaces — found in slice 2 review, fixed on the slice 2 branch.)
 
 Work:
 - `Nudge.Logger` DLL implementing `Microsoft.Build.Framework.ILogger`:
