@@ -352,8 +352,8 @@ internal static class Program
 
     /// <summary>
     /// Handles `nudge skill ...`: install the nudge skills (nudge-ruleset-gen,
-    /// nudge-coaching) into AI coding harnesses. With no skill name, install
-    /// and uninstall operate on every shipped skill; naming one selects it.
+    /// nudge-coaching) into AI coding harnesses. The skills ship and install
+    /// as a bundle — install and uninstall always cover every shipped skill.
     /// </summary>
     private static int RunSkillCommand(string[] args)
     {
@@ -406,9 +406,9 @@ internal static class Program
 
     private static int RunSkillInstall(string[] args)
     {
-        var (skills, harnessNames, globalScope, force, dryRun) = ParseSkillTargetArgs(args, "install");
+        var (harnessNames, globalScope, force, dryRun) = ParseSkillTargetArgs(args, "install");
 
-        foreach (var skill in skills)
+        foreach (var skill in SkillInstaller.KnownSkills)
         {
             var source = SkillInstaller.FindSkillSource(skill)
                 ?? throw new InvalidOperationException(
@@ -425,8 +425,8 @@ internal static class Program
 
     private static int RunSkillUninstall(string[] args)
     {
-        var (skills, harnessNames, globalScope, _, dryRun) = ParseSkillTargetArgs(args, "uninstall");
-        foreach (var skill in skills)
+        var (harnessNames, globalScope, _, dryRun) = ParseSkillTargetArgs(args, "uninstall");
+        foreach (var skill in SkillInstaller.KnownSkills)
         {
             var targets = SkillInstaller.ResolveTargets(
                 harnessNames, globalScope, SkillInstaller.HomeDir, Directory.GetCurrentDirectory(), skill);
@@ -437,16 +437,14 @@ internal static class Program
     }
 
     /// <summary>
-    /// Parses the target-selection arguments shared by install and uninstall:
-    /// an optional skill name (absent = every shipped skill), --global/--project
-    /// scope, --harness (repeatable, comma-separated), --all, plus
-    /// --force/--dry-run for install.
+    /// Parses the target-selection flags shared by install and uninstall:
+    /// --global/--project scope, --harness (repeatable, comma-separated),
+    /// --all, plus --force/--dry-run for install.
     /// </summary>
-    private static (IReadOnlyList<string> Skills, IReadOnlyList<string> Harnesses, bool GlobalScope, bool Force, bool DryRun)
+    private static (IReadOnlyList<string> Harnesses, bool GlobalScope, bool Force, bool DryRun)
         ParseSkillTargetArgs(string[] args, string verb)
     {
         var harnessNames = new List<string>();
-        string? skillName = null;
         var globalScope = true;
         var force = false;
         var dryRun = false;
@@ -478,14 +476,6 @@ internal static class Program
                         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                     break;
                 default:
-                    if (!args[i].StartsWith("-", StringComparison.Ordinal) && skillName == null)
-                    {
-                        skillName = SkillInstaller.KnownSkills.FirstOrDefault(s =>
-                            s.Equals(args[i], StringComparison.OrdinalIgnoreCase))
-                            ?? throw new CliUsageException(
-                                $"Unknown skill '{args[i]}'. Known skills: {string.Join(", ", SkillInstaller.KnownSkills)}");
-                        break;
-                    }
                     throw new CliUsageException($"Unknown argument: {args[i]}");
             }
         }
@@ -495,10 +485,7 @@ internal static class Program
             : harnessNames.Count > 0
                 ? harnessNames
                 : SkillInstaller.DefaultHarnesses;
-        IReadOnlyList<string> skills = skillName != null
-            ? new List<string> { skillName }
-            : SkillInstaller.KnownSkills;
-        return (skills, selected, globalScope, force, dryRun);
+        return (selected, globalScope, force, dryRun);
     }
 
     private const string SkillUsage = """
@@ -509,12 +496,12 @@ internal static class Program
           nudge-ruleset-gen  Generate coaching-guide rulesets for uncovered analyzers
 
         Usage:
-          nudge skill install [<skill>] [--global|--project] [--harness <name>...] [--all] [--force] [--dry-run]
-          nudge skill uninstall [<skill>] [--global|--project] [--harness <name>...] [--all] [--dry-run]
+          nudge skill install [--global|--project] [--harness <name>...] [--all] [--force] [--dry-run]
+          nudge skill uninstall [--global|--project] [--harness <name>...] [--all] [--dry-run]
           nudge skill list          Show where the skills are currently installed
           nudge skill harnesses     Show known harnesses and their skill directories
 
-        With no <skill>, install and uninstall cover both skills. With no
+        Install and uninstall always cover both shipped skills. With no
         --harness, installs to the universal pair (~/.agents/skills and
         ~/.claude/skills), which every harness in the table reads except Claude
         Code — hence the second copy. --project installs into the current

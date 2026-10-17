@@ -196,9 +196,9 @@ Built guides for an analyzer nobody's covered yet? This repo ships the skill
 for it: `.agents/skills/nudge-ruleset-gen/` walks through the whole process —
 extracting the analyzer's diagnostic descriptors, researching each rule,
 writing the guides, validating them, and packaging the ruleset. Get it into
-your AI harness with `nudge skill install` (which installs both shipped
-skills — this one and `nudge-coaching`; name one to install just that one —
-see each skill's `INSTALL.md` for the per-harness details). Open a PR with
+your AI harness with `nudge skill install` (which installs the shipped
+skills as a bundle — this one and `nudge-coaching`; see each skill's
+`INSTALL.md` for the per-harness details). Open a PR with
 the new ruleset and include the validation report — the methodology is what
 gets reviewed, not just the guides.
 

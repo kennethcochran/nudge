@@ -6,14 +6,15 @@ files work in every supported harness. The easy path is the nudge tool
 itself:
 
 ```bash
-nudge skill install                    # installs BOTH nudge skills, global
-nudge skill install nudge-coaching     # just this one
+nudge skill install                    # installs the nudge skills, global
 nudge skill install --project          # into the current repo instead
 nudge skill install --harness cursor,windsurf
 nudge skill list                       # where the skills are installed
-nudge skill uninstall nudge-coaching   # remove just this one
-nudge skill uninstall                  # remove both
+nudge skill uninstall                  # remove the skills
 ```
+
+The skills install and uninstall as a bundle — the two nudge skills
+(`nudge-coaching` and `nudge-ruleset-gen`) always travel together.
 
 With no `--harness`, installs go to the universal pair (`~/.agents/skills/`
 and `~/.claude/skills/`), which together cover every known harness. Restart

@@ -92,7 +92,7 @@ internal sealed class CliOptions
                      [--baseline <file> | --write-baseline <file>] [--timeout <seconds>]
           dotnet build ... | nudge --stdin [--rules <dir>] [--baseline <file>]
           nudge ruleset add <name> | nudge ruleset list | nudge ruleset remove <name> | nudge ruleset detect
-          nudge skill install [<skill>] [--global|--project] [--harness <name>...] [--all]
+          nudge skill install [--global|--project] [--harness <name>...] [--all]
           nudge explain <ruleId> [--rules <dir>]
           nudge init [--force] [--remove]
 
