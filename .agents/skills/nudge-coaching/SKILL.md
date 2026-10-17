@@ -51,7 +51,13 @@ Two cautions about trusting a clean result:
 
 ## When there is no report
 
-- **No `.nudge/` in the repo:** the repo hasn't opted in. Propose
+- **No pointer in the build output and no fresh report:** the logger isn't
+  running for this build. Check whether it's actually registered — the
+  `Directory.Build.rsp` at the repo root contains a `/logger:` line for
+  `Nudge.Logger` and `.nudge/Nudge.Logger.dll` exists. (A `.nudge/`
+  directory by itself proves nothing: `nudge init --remove` unregisters the
+  logger but deliberately leaves `baseline.txt` behind.) If it isn't
+  registered, the repo hasn't opted in (or has opted back out). Propose
   `nudge init` to the user rather than running it unprompted — it installs an
   auto-loaded logger DLL, and that opt-in is the user's call. Until then,
   `dotnet build ... | nudge --stdin` gives the same coaching for one build.
