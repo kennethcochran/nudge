@@ -19,8 +19,8 @@ internal static class SkillInstaller
     /// A harness and where it looks for skills: home-relative directory for
     /// global installs, cwd-relative directory for per-project installs.
     /// Paths come from each harness's documentation and the agentskills.io
-    /// interop convention; see INSTALL.md in the skill directory for sources
-    /// and gotchas.
+    /// interop convention; see the README's "Installing the skills" section
+    /// for the matrix and per-harness gotchas.
     /// </summary>
     internal sealed record Harness(string Name, string GlobalDir, string ProjectDir);
 

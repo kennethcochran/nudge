@@ -197,10 +197,97 @@ for it: `.agents/skills/nudge-ruleset-gen/` walks through the whole process —
 extracting the analyzer's diagnostic descriptors, researching each rule,
 writing the guides, validating them, and packaging the ruleset. Get it into
 your AI harness with `nudge skill install` (which installs the shipped
-skills as a bundle — this one and `nudge-coaching`; see each skill's
-`INSTALL.md` for the per-harness details). Open a PR with
+skills as a bundle — this one and `nudge-coaching`). Open a PR with
 the new ruleset and include the validation report — the methodology is what
 gets reviewed, not just the guides.
+
+## Installing the skills
+
+Both shipped skills (`nudge-coaching` and `nudge-ruleset-gen`) follow the
+[Agent Skills open standard](https://agentskills.io) — a `SKILL.md` with
+`name` and `description` frontmatter — so the same files work in every
+harness below. They install and uninstall as a bundle:
+
+```bash
+nudge skill install                    # global, universal pair (see below)
+nudge skill install --project          # into the current repo instead
+nudge skill install --harness cursor,windsurf
+nudge skill install --all              # every known harness
+nudge skill list                       # where the skills are installed
+nudge skill uninstall                  # remove the skills
+```
+
+With no `--harness`, `nudge skill install` writes two copies:
+`~/.agents/skills/` and `~/.claude/skills/`. The `.agents/skills/` directory
+is the cross-harness interop path — Codex, Cursor, Gemini CLI, GitHub
+Copilot, opencode, Amp, and Windsurf all discover skills there — while
+Claude Code only reads its own `.claude/skills/`. Two copies, full coverage.
+Restart the harness session after installing so it picks the skills up.
+Prefer the universal installer? `npx skills add kennethcochran/nudge` (from
+[vercel-labs/skills](https://github.com/vercel-labs/skills)) detects your
+harnesses and installs from this repo.
+
+Global is the right default for both skills: they're general capabilities,
+not tied to one codebase. `--project` fits teams that want the skills
+versioned and shared, so every contributor's agent has them without a
+separate install step.
+
+### Manual install
+
+Copy the whole skill folder (not just `SKILL.md` — `nudge-ruleset-gen`'s
+`references/` guides and `bin/` helper travel with it) into the harness's
+skills directory, then start a new session. Substitute the skill name for
+`<skill>`:
+
+| Harness | Global (you) | Per-repo (team) |
+|---|---|---|
+| Claude Code | `~/.claude/skills/<skill>/` | `.claude/skills/<skill>/` |
+| Codex CLI | `~/.agents/skills/<skill>/` | `.agents/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `.cursor/skills/<skill>/` |
+| GitHub Copilot | `~/.copilot/skills/<skill>/` | `.github/skills/<skill>/` |
+| Gemini CLI | `~/.gemini/skills/<skill>/` | `.gemini/skills/<skill>/` |
+| opencode | `~/.config/opencode/skills/<skill>/` | `.opencode/skills/<skill>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `.windsurf/skills/<skill>/` |
+| Cline | `~/.cline/skills/<skill>/` | `.cline/skills/<skill>/` |
+| Roo Code | `~/.roo/skills/<skill>/` | `.roo/skills/<skill>/` |
+| Amp | `~/.config/agents/skills/<skill>/` | `.agents/skills/<skill>/` |
+| Kiro | `~/.kiro/skills/<skill>/` | `.kiro/skills/<skill>/` |
+| Antigravity | `~/.agents/skills/<skill>/` | `.agent/skills/<skill>/` |
+
+On Windows, `~` is `%USERPROFILE%`.
+
+### Gotchas per harness
+
+- **Claude Code** — `SKILL.md` casing is exact and the folder name should be
+  kebab-case. Skills are scanned at session start: installing mid-session
+  does nothing until you start a new one. The `description` frontmatter is
+  what drives discovery — keep it about *when* to use the skill, not just
+  what it does.
+- **Codex CLI** — only `name` and `description` frontmatter are honored;
+  extra fields are ignored, so the skills deliberately use just those two.
+  The old `~/.codex/prompts/` location is deprecated in favor of skills.
+  The skill catalog is bounded (~2% of context), so terse descriptions win.
+- **Cursor** — the skills directory has moved across Cursor versions; if
+  the paths above don't work, check Cursor's settings/docs for the current
+  one. Don't paste skill bodies into `.cursor/rules/` — rules are for short
+  policies, skills are loaded on demand.
+- **GitHub Copilot** — agent skills require the `chat.useAgentSkills`
+  setting in VS Code. Copilot also reads `~/.claude/skills/`, so the Claude
+  Code copy doubles as a Copilot fallback.
+- **Gemini CLI** — skills surface as `/skill:` slash commands and the first
+  activation shows a confirmation prompt; expect it. Within one tier,
+  `.agents/skills/` takes precedence over `.gemini/skills/`. `/skills list`
+  verifies discovery; `gemini skills install <git-url> --consent` is the
+  native installer.
+- **opencode** — also supports remote skill catalogs via `"skills":
+  ["https://…"]` in `opencode.jsonc`, if you'd rather pin a URL than copy
+  files.
+- **Windsurf / Cline / Roo** — SKILL.md support is newer here than in the
+  Claude/Codex world; if a version doesn't pick a skill up, the fallback is
+  a thin workspace rule pointing at the skill's path.
+- **Aider** — no native SKILL.md support; it reads convention files
+  (`AGENTS.md`/`CONVENTIONS.md`). Point it at the skill with a one-line rule
+  instead of installing.
 
 ## The fine print
 
