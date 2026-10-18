@@ -142,4 +142,45 @@ public sealed class SkillInstallerTests
 
         Assert.That(found, Has.Count.EqualTo(2));
     }
+
+    [Test]
+    public void ResolveTargets_NamedSkill_UsesThatSkillsFolder()
+    {
+        var targets = SkillInstaller.ResolveTargets(
+            SkillInstaller.DefaultHarnesses, globalScope: true, _home, _project,
+            SkillInstaller.CoachingSkillName);
+
+        Assert.That(targets, Has.Count.EqualTo(2));
+        Assert.That(targets, Contains.Item(
+            Path.Combine(_home, ".agents", "skills", "nudge-coaching")));
+        Assert.That(targets, Contains.Item(
+            Path.Combine(_home, ".claude", "skills", "nudge-coaching")));
+    }
+
+    [Test]
+    public void KnownSkills_ContainsBothShippedSkills()
+    {
+        Assert.That(SkillInstaller.KnownSkills, Is.EquivalentTo(
+            new[] { "nudge-ruleset-gen", "nudge-coaching" }));
+    }
+
+    [Test]
+    public void ListInstalled_FindsBothSkills()
+    {
+        var logs = new List<string>();
+        foreach (var skill in SkillInstaller.KnownSkills)
+        {
+            var targets = SkillInstaller.ResolveTargets(
+                new[] { "agents" }, globalScope: true, _home, _project, skill);
+            SkillInstaller.Install(_source, targets, false, false, logs.Add);
+        }
+
+        var found = SkillInstaller.ListInstalled(_home, _project);
+
+        Assert.That(found, Has.Count.EqualTo(2));
+        Assert.That(found, Contains.Item(
+            Path.Combine(_home, ".agents", "skills", "nudge-ruleset-gen")));
+        Assert.That(found, Contains.Item(
+            Path.Combine(_home, ".agents", "skills", "nudge-coaching")));
+    }
 }

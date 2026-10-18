@@ -94,19 +94,78 @@ nudge --sln YourSolution.sln --baseline .nudge/baseline.txt
 ```
 
 **Build-time coaching:** `nudge init` installs an MSBuild logger into the repo
-so every `dotnet build` embellishes diagnostics automatically — no wrapper,
-no piping:
+so every `dotnet build` prints coaching inline, right where the diagnostic
+appears — no wrapper, no piping, no separate report to go find:
 
 ```bash
 nudge init
-dotnet build   # <- ends with "nudge: N finding(s) — see .nudge/report.md"
+dotnet build
 ```
 
-The full coaching report lands in `.nudge/report.md`; the build itself is never
-failed by the logger. `nudge init --remove` undoes the installation.
+```
+Program.cs(14,21): error CS0659: 'Customer' overrides Object.Equals(object o) but does not override Object.GetHashCode()
+nudge: coaching for CS0659 — Override Equals Without GetHashCode
+nudge: Why: Equals and GetHashCode are a contract: equal objects must produce equal hash codes...
+nudge: Do this:
+nudge:   1. Override GetHashCode to combine the same fields Equals compares, e.g. HashCode.Combine(X, Y).
+nudge:   ...
+nudge: AVOID:
+nudge:   - Do not implement GetHashCode() => 0; ...
+```
+
+A rule's full guide prints with its first diagnostic in a build; later
+diagnostics for the same rule get a one-line reminder. Findings in
+`.nudge/baseline.txt` print no coaching — they're snoozed. The build itself
+is never failed by the logger — nudge coaches, it doesn't gate. (Earlier
+versions wrote a `.nudge/report.md` report and an end-of-build pointer line;
+the inline design replaces that — a stale `report.md` is safe to delete.)
+
+Prefer a quieter output? `nudge init --console-logger` goes one step
+further: the nudge logger replaces the default console logger
+(`/noconsolelogger`) and prints every diagnostic itself in canonical
+MSBuild format, coaching inline, plus the end-of-build summary. It is not
+a byte-for-byte clone of the default logger — ordinary build chatter
+(project/target/task messages) is not reproduced.
+
+What `nudge init` actually installs:
+
+- `.nudge/Nudge.Logger.dll` and `.nudge/Nudge.Core.dll` — the logger payload.
+  Re-running `nudge init` after a nudge upgrade refreshes them.
+- A `/logger:` line (plus a marker comment) in `Directory.Build.rsp` at the
+  repo root, merged with any content already there. The line points MSBuild
+  at the payload and at the baseline, `.nudge/baseline.txt`. Console mode
+  adds a `/noconsolelogger` line alongside.
+
+> **Trust note:** an MSBuild logger is code that executes inside every build
+> of the repo. That is exactly why installation is an explicit, per-repo
+> opt-in — `nudge init` is a command a human runs, never something that
+> happens as a side effect — and why the payload sits in `.nudge/`, in plain
+> sight, instead of a global hook. Committing `Directory.Build.rsp` and
+> `.nudge/` shares the setup with everyone who clones the repo, loggers and
+> all; review it like any other build input.
+
+Which builds does this cover? `dotnet build` on the .NET 10 SDK (the same
+requirement as the nudge tool itself) — including CI and agent harnesses,
+which build from the command line. Two honest gaps: Visual Studio's
+in-process IDE builds ignore `Directory.Build.rsp` entirely (no coaching;
+build from the command line, or use `nudge explain` below), and MSBuild
+hosts running on .NET Framework or an older SDK can't load a .NET 10 logger
+at all — run `nudge init --remove` before building there.
+
+Turning it off, in descending order of permanence: `nudge init --remove`
+(undoes the install, keeps your `baseline.txt`), delete the nudge lines from
+`Directory.Build.rsp`, or skip response files for a single build with
+`dotnet build /noautoresponse`.
 
 **One-off lookup:** `nudge explain S1234` prints the coaching guide for a single
 rule — handy when an agent (or human) meets a diagnostic outside a build.
+
+**The agent loop, as a skill:** `nudge skill install` also installs the
+`nudge-coaching` skill, which teaches an AI coding agent the loop this tool
+is built for: build → fix the root cause the inline coaching names (never
+the dodge in its AVOID section) → rebuild, with `nudge explain` for
+diagnostics met outside a build. See `.agents/skills/nudge-coaching/` in
+this repo.
 
 ## Guide packs (rulesets)
 
@@ -161,9 +220,98 @@ Built guides for an analyzer nobody's covered yet? This repo ships the skill
 for it: `.agents/skills/nudge-ruleset-gen/` walks through the whole process —
 extracting the analyzer's diagnostic descriptors, researching each rule,
 writing the guides, validating them, and packaging the ruleset. Get it into
-your AI harness with `nudge skill install` (see the skill's `INSTALL.md` for
-the per-harness details). Open a PR with the new ruleset and include the
-validation report — the methodology is what gets reviewed, not just the guides.
+your AI harness with `nudge skill install` (which installs the shipped
+skills as a bundle — this one and `nudge-coaching`). Open a PR with
+the new ruleset and include the validation report — the methodology is what
+gets reviewed, not just the guides.
+
+## Installing the skills
+
+Both shipped skills (`nudge-coaching` and `nudge-ruleset-gen`) follow the
+[Agent Skills open standard](https://agentskills.io) — a `SKILL.md` with
+`name` and `description` frontmatter — so the same files work in every
+harness below. They install and uninstall as a bundle:
+
+```bash
+nudge skill install                    # global, universal pair (see below)
+nudge skill install --project          # into the current repo instead
+nudge skill install --harness cursor,windsurf
+nudge skill install --all              # every known harness
+nudge skill list                       # where the skills are installed
+nudge skill uninstall                  # remove the skills
+```
+
+With no `--harness`, `nudge skill install` writes two copies:
+`~/.agents/skills/` and `~/.claude/skills/`. The `.agents/skills/` directory
+is the cross-harness interop path — Codex, Cursor, Gemini CLI, GitHub
+Copilot, opencode, Amp, and Windsurf all discover skills there — while
+Claude Code only reads its own `.claude/skills/`. Two copies, full coverage.
+Restart the harness session after installing so it picks the skills up.
+Prefer the universal installer? `npx skills add kennethcochran/nudge` (from
+[vercel-labs/skills](https://github.com/vercel-labs/skills)) detects your
+harnesses and installs from this repo.
+
+Global is the right default for both skills: they're general capabilities,
+not tied to one codebase. `--project` fits teams that want the skills
+versioned and shared, so every contributor's agent has them without a
+separate install step.
+
+### Manual install
+
+Copy the whole skill folder (not just `SKILL.md` — `nudge-ruleset-gen`'s
+`references/` guides and `bin/` helper travel with it) into the harness's
+skills directory, then start a new session. Substitute the skill name for
+`<skill>`:
+
+| Harness | Global (you) | Per-repo (team) |
+|---|---|---|
+| Claude Code | `~/.claude/skills/<skill>/` | `.claude/skills/<skill>/` |
+| Codex CLI | `~/.agents/skills/<skill>/` | `.agents/skills/<skill>/` |
+| Cursor | `~/.cursor/skills/<skill>/` | `.cursor/skills/<skill>/` |
+| GitHub Copilot | `~/.copilot/skills/<skill>/` | `.github/skills/<skill>/` |
+| Gemini CLI | `~/.gemini/skills/<skill>/` | `.gemini/skills/<skill>/` |
+| opencode | `~/.config/opencode/skills/<skill>/` | `.opencode/skills/<skill>/` |
+| Windsurf | `~/.codeium/windsurf/skills/<skill>/` | `.windsurf/skills/<skill>/` |
+| Cline | `~/.cline/skills/<skill>/` | `.cline/skills/<skill>/` |
+| Roo Code | `~/.roo/skills/<skill>/` | `.roo/skills/<skill>/` |
+| Amp | `~/.config/agents/skills/<skill>/` | `.agents/skills/<skill>/` |
+| Kiro | `~/.kiro/skills/<skill>/` | `.kiro/skills/<skill>/` |
+| Antigravity | `~/.agents/skills/<skill>/` | `.agent/skills/<skill>/` |
+
+On Windows, `~` is `%USERPROFILE%`.
+
+### Gotchas per harness
+
+- **Claude Code** — `SKILL.md` casing is exact and the folder name should be
+  kebab-case. Skills are scanned at session start: installing mid-session
+  does nothing until you start a new one. The `description` frontmatter is
+  what drives discovery — keep it about *when* to use the skill, not just
+  what it does.
+- **Codex CLI** — only `name` and `description` frontmatter are honored;
+  extra fields are ignored, so the skills deliberately use just those two.
+  The old `~/.codex/prompts/` location is deprecated in favor of skills.
+  The skill catalog is bounded (~2% of context), so terse descriptions win.
+- **Cursor** — the skills directory has moved across Cursor versions; if
+  the paths above don't work, check Cursor's settings/docs for the current
+  one. Don't paste skill bodies into `.cursor/rules/` — rules are for short
+  policies, skills are loaded on demand.
+- **GitHub Copilot** — agent skills require the `chat.useAgentSkills`
+  setting in VS Code. Copilot also reads `~/.claude/skills/`, so the Claude
+  Code copy doubles as a Copilot fallback.
+- **Gemini CLI** — skills surface as `/skill:` slash commands and the first
+  activation shows a confirmation prompt; expect it. Within one tier,
+  `.agents/skills/` takes precedence over `.gemini/skills/`. `/skills list`
+  verifies discovery; `gemini skills install <git-url> --consent` is the
+  native installer.
+- **opencode** — also supports remote skill catalogs via `"skills":
+  ["https://…"]` in `opencode.jsonc`, if you'd rather pin a URL than copy
+  files.
+- **Windsurf / Cline / Roo** — SKILL.md support is newer here than in the
+  Claude/Codex world; if a version doesn't pick a skill up, the fallback is
+  a thin workspace rule pointing at the skill's path.
+- **Aider** — no native SKILL.md support; it reads convention files
+  (`AGENTS.md`/`CONVENTIONS.md`). Point it at the skill with a one-line rule
+  instead of installing.
 
 ## The fine print
 

@@ -98,8 +98,9 @@ internal sealed class CliOptions
           nudge init [--force] [--remove]
 
         Rulesets are downloadable coaching-guide packs (e.g. nudge ruleset add sonar).
-        Run `nudge ruleset` for details. `nudge skill install` puts the
-        ruleset-generator skill into your AI coding harnesses.
+        Run `nudge ruleset` for details. `nudge skill install` puts the nudge
+        skills (the coaching loop and the ruleset generator) into your AI
+        coding harnesses.
 
         Exit codes:
           0  clean — no findings
