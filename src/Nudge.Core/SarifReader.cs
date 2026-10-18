@@ -13,25 +13,34 @@ namespace Nudge;
 ///
 /// Malformed input fails loudly (see <see cref="Parse"/>): a SARIF file the
 /// reader cannot understand must surface as an error, never as a clean
-/// report with the findings silently dropped.
+/// report with the findings silently dropped. Validation follows the SARIF
+/// schema: <c>version</c> must be exactly "2.1.0", every run must carry a
+/// <c>results</c> array, and every result must carry a resolvable
+/// <c>message</c> — anything else is not a completed analysis.
 /// </summary>
 public static class SarifReader
 {
     /// <summary>
     /// Parses SARIF log text into diagnostics, deduped on the same key as
     /// the text log parser (rule, file, line, message — multi-targeted and
-    /// multi-run logs repeat findings).
+    /// multi-run logs repeat findings). Duplicates keep the highest
+    /// severity seen, so a finding reported as both warning and error is
+    /// never downgraded by deduplication. Results whose <c>kind</c> is
+    /// <c>pass</c> or <c>notApplicable</c> are not findings and are skipped.
     /// </summary>
     /// <param name="sarifText">The SARIF JSON text.</param>
     /// <param name="baseDirectory">
-    /// Directory that relative artifact URIs resolve against (typically the
-    /// directory the SARIF file lives in, or the repo root for an ErrorLog).
-    /// When null, relative URIs are kept as written.
+    /// Directory that relative artifact URIs resolve against when the log
+    /// itself gives no base (a location's <c>uriBaseId</c>, resolved through
+    /// the run's <c>originalUriBaseIds</c>, wins when present). Typically
+    /// the directory the SARIF file lives in, or the repo root for an
+    /// ErrorLog. When null, unresolved relative URIs are kept as written.
     /// </param>
     /// <exception cref="JsonException">The text is not valid JSON.</exception>
     /// <exception cref="FormatException">
-    /// The JSON is not a SARIF 2.1.0 log (no <c>runs</c> array, or an
-    /// unsupported <c>version</c>).
+    /// The JSON is not a SARIF 2.1.0 log: missing or unsupported
+    /// <c>version</c>, no <c>runs</c> array, a run without a <c>results</c>
+    /// array, or a result without a resolvable <c>message</c>.
     /// </exception>
     public static IReadOnlyList<BuildDiagnostic> Parse(string sarifText, string? baseDirectory = null)
     {
@@ -44,31 +53,55 @@ public static class SarifReader
         {
             throw new FormatException("Not a SARIF log: the document has no 'runs' array.");
         }
-        if (root.TryGetProperty("version", out var version)
-            && version.ValueKind == JsonValueKind.String
-            && version.GetString() != "2.1.0")
+        // SARIF requires version, and the only value it may carry is
+        // "2.1.0". A log without it is not a SARIF 2.1.0 log this reader
+        // can vouch for — accepting {"runs":[]} as "clean" would be a
+        // silent failure.
+        if (!root.TryGetProperty("version", out var version)
+            || version.ValueKind != JsonValueKind.String
+            || version.GetString() != "2.1.0")
         {
             throw new FormatException(
-                $"Unsupported SARIF version '{version.GetString()}': nudge reads SARIF 2.1.0 logs.");
+                "Not a SARIF 2.1.0 log: 'version' is missing or is not \"2.1.0\".");
         }
 
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var indexByKey = new Dictionary<string, int>(StringComparer.Ordinal);
         var result = new List<BuildDiagnostic>();
 
         foreach (var run in runs.EnumerateArray())
         {
-            var rules = ReadRules(run);
+            var runInfo = ReadRunInfo(run);
+            // The SARIF schema requires every run to carry its results
+            // array (possibly empty). A missing or non-array value means
+            // the run is malformed or never completed — not a clean run.
             if (!run.TryGetProperty("results", out var results)
                 || results.ValueKind != JsonValueKind.Array)
             {
-                continue;
+                throw new FormatException(
+                    "Invalid SARIF log: a run has no 'results' array.");
             }
             foreach (var sarifResult in results.EnumerateArray())
             {
-                var diag = ConvertResult(sarifResult, rules, baseDirectory);
+                // A passed or inapplicable check is not a finding.
+                var kind = GetString(sarifResult, "kind");
+                if (kind is "pass" or "notApplicable")
+                    continue;
+
+                var diag = ConvertResult(sarifResult, runInfo, baseDirectory);
                 var key = $"{diag.RuleId}|{diag.File}|{diag.Line}|{diag.Message}";
-                if (seen.Add(key))
+                if (indexByKey.TryGetValue(key, out var existingIndex))
+                {
+                    // Merge duplicates without losing the highest severity:
+                    // the same finding reported as warning in one run and
+                    // error in another is an error.
+                    if (SeverityRank(diag.Severity) > SeverityRank(result[existingIndex].Severity))
+                        result[existingIndex] = diag;
+                }
+                else
+                {
+                    indexByKey[key] = result.Count;
                     result.Add(diag);
+                }
             }
         }
 
@@ -79,23 +112,35 @@ public static class SarifReader
     public static IReadOnlyList<BuildDiagnostic> ReadFile(string path, string? baseDirectory = null) =>
         Parse(File.ReadAllText(path), baseDirectory);
 
+    private static int SeverityRank(string severity) => severity.ToLowerInvariant() switch
+    {
+        "error" => 4,
+        "warning" => 3,
+        "note" => 2,
+        "none" => 1,
+        _ => 0,
+    };
+
     /// <summary>
-    /// The rule metadata of one run: the ordered descriptor list (for
-    /// <c>ruleIndex</c> lookups) plus default levels and message strings
-    /// keyed by rule ID.
+    /// The per-run context a result resolves against: rule metadata (the
+    /// ordered descriptor list for <c>ruleIndex</c> lookups, default levels
+    /// and message strings keyed by rule ID) and the run's
+    /// <c>originalUriBaseIds</c> for resolving <c>uriBaseId</c> references.
     /// </summary>
-    private sealed record RuleSet(
+    private sealed record RunInfo(
         IReadOnlyList<string> IdsByIndex,
         IReadOnlyDictionary<string, string?> DefaultLevelById,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> MessageStringsById,
-        IReadOnlyDictionary<string, string> GlobalMessageStrings);
+        IReadOnlyDictionary<string, string> GlobalMessageStrings,
+        IReadOnlyDictionary<string, (string? Uri, string? BaseId)> UriBases);
 
-    private static RuleSet ReadRules(JsonElement run)
+    private static RunInfo ReadRunInfo(JsonElement run)
     {
         var ids = new List<string>();
         var levels = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var messageStrings = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
         var globalStrings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var uriBases = new Dictionary<string, (string?, string?)>(StringComparer.OrdinalIgnoreCase);
 
         if (run.TryGetProperty("tool", out var tool)
             && tool.TryGetProperty("driver", out var driver))
@@ -125,7 +170,18 @@ public static class SarifReader
             }
         }
 
-        return new RuleSet(ids, levels, messageStrings, globalStrings);
+        if (run.TryGetProperty("originalUriBaseIds", out var bases)
+            && bases.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var entry in bases.EnumerateObject())
+            {
+                uriBases[entry.Name] = (
+                    GetString(entry.Value, "uri"),
+                    GetString(entry.Value, "uriBaseId"));
+            }
+        }
+
+        return new RunInfo(ids, levels, messageStrings, globalStrings, uriBases);
     }
 
     private static void ReadMessageStrings(JsonElement container, Dictionary<string, string> target)
@@ -140,22 +196,24 @@ public static class SarifReader
         }
     }
 
-    private static BuildDiagnostic ConvertResult(JsonElement result, RuleSet rules, string? baseDirectory)
+    private static BuildDiagnostic ConvertResult(JsonElement result, RunInfo run, string? baseDirectory)
     {
         var ruleId = GetString(result, "ruleId")
             ?? (result.TryGetProperty("rule", out var ruleRef) ? GetString(ruleRef, "id") : null)
-            ?? RuleIdAtIndex(result, rules)
+            ?? RuleIdAtIndex(result, run)
             ?? "unknown";
 
         // Severity: the result's own level wins, then the rule descriptor's
-        // default level, then the SARIF default (warning). The note/none
-        // levels are preserved, not promoted to warning — they are the
-        // whole reason this channel exists.
+        // default level, then the SARIF default — warning for a failed
+        // check, none for the other (informational/review) kinds. The
+        // note/none levels are preserved, not promoted to warning — they
+        // are the whole reason this channel exists.
+        var kind = GetString(result, "kind");
         var level = GetString(result, "level")
-            ?? (rules.DefaultLevelById.TryGetValue(ruleId, out var defaultLevel) ? defaultLevel : null)
-            ?? "warning";
+            ?? (run.DefaultLevelById.TryGetValue(ruleId, out var defaultLevel) ? defaultLevel : null)
+            ?? (kind is null or "fail" ? "warning" : "none");
 
-        var message = ReadMessage(result, ruleId, rules);
+        var message = ReadMessage(result, ruleId, run);
 
         string? file = null;
         var line = 0;
@@ -166,7 +224,7 @@ public static class SarifReader
             && locations[0].TryGetProperty("physicalLocation", out var physical))
         {
             if (physical.TryGetProperty("artifactLocation", out var artifact))
-                file = ResolveUri(GetString(artifact, "uri"), baseDirectory);
+                file = ResolveArtifactUri(artifact, run, baseDirectory);
             if (physical.TryGetProperty("region", out var region))
             {
                 line = GetInt(region, "startLine");
@@ -184,23 +242,30 @@ public static class SarifReader
             Project: null);
     }
 
-    private static string? RuleIdAtIndex(JsonElement result, RuleSet rules)
+    private static string? RuleIdAtIndex(JsonElement result, RunInfo run)
     {
         if (result.TryGetProperty("ruleIndex", out var index)
             && index.ValueKind == JsonValueKind.Number
             && index.TryGetInt32(out var i)
-            && i >= 0 && i < rules.IdsByIndex.Count
-            && rules.IdsByIndex[i].Length > 0)
+            && i >= 0 && i < run.IdsByIndex.Count
+            && run.IdsByIndex[i].Length > 0)
         {
-            return rules.IdsByIndex[i];
+            return run.IdsByIndex[i];
         }
         return null;
     }
 
-    private static string ReadMessage(JsonElement result, string ruleId, RuleSet rules)
+    private static string ReadMessage(JsonElement result, string ruleId, RunInfo run)
     {
-        if (!result.TryGetProperty("message", out var message))
-            return string.Empty;
+        // SARIF requires every result to carry a message whose text can be
+        // resolved. A missing message or an unresolved message id is an
+        // invalid log, not a finding with nothing to say.
+        if (!result.TryGetProperty("message", out var message)
+            || message.ValueKind != JsonValueKind.Object)
+        {
+            throw new FormatException(
+                $"Invalid SARIF log: a result for rule '{ruleId}' has no message.");
+        }
 
         var text = GetString(message, "text");
         if (text == null)
@@ -210,17 +275,22 @@ public static class SarifReader
             var id = GetString(message, "id");
             if (id != null)
             {
-                if (rules.MessageStringsById.TryGetValue(ruleId, out var perRule)
+                if (run.MessageStringsById.TryGetValue(ruleId, out var perRule)
                     && perRule.TryGetValue(id, out var fromRule))
                 {
                     text = fromRule;
                 }
-                else if (rules.GlobalMessageStrings.TryGetValue(id, out var fromGlobal))
+                else if (run.GlobalMessageStrings.TryGetValue(id, out var fromGlobal))
                 {
                     text = fromGlobal;
                 }
             }
-            text ??= id ?? string.Empty;
+            if (text == null)
+            {
+                throw new FormatException(
+                    $"Invalid SARIF log: the message of a result for rule '{ruleId}' " +
+                    "has no text and its id (if any) resolves to no message string.");
+            }
         }
 
         // Substitute {0}, {1}, … placeholders from the message arguments.
@@ -240,25 +310,68 @@ public static class SarifReader
     }
 
     /// <summary>
-    /// Turns an artifactLocation URI into a filesystem path: <c>file://</c>
-    /// URIs are decoded (percent-escapes included), plain relative paths are
-    /// kept as written unless a base directory was supplied.
+    /// Turns an artifactLocation into a filesystem path. A <c>file://</c>
+    /// or rooted URI stands on its own; a relative URI resolves against
+    /// its <c>uriBaseId</c> (through the run's
+    /// <c>originalUriBaseIds</c>) when it has one, and against the caller's
+    /// base directory otherwise.
     /// </summary>
-    private static string? ResolveUri(string? uri, string? baseDirectory)
+    private static string? ResolveArtifactUri(JsonElement artifact, RunInfo run, string? baseDirectory)
     {
-        if (string.IsNullOrEmpty(uri))
+        var uri = GetString(artifact, "uri");
+        var baseId = GetString(artifact, "uriBaseId");
+
+        if (uri != null
+            && uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+            && Uri.TryCreate(uri, UriKind.Absolute, out var fileUri))
+        {
+            return fileUri.LocalPath;
+        }
+        if (uri != null && Path.IsPathRooted(Uri.UnescapeDataString(uri)))
+            return Uri.UnescapeDataString(uri);
+        if (uri == null && baseId == null)
             return null;
 
+        var basePath = baseId != null
+            ? ResolveUriBase(baseId, run, baseDirectory, depth: 0)
+            : baseDirectory;
+        var relative = uri != null ? Uri.UnescapeDataString(uri) : string.Empty;
+        if (basePath == null)
+            return relative.Length > 0 ? relative : null;
+        return relative.Length > 0
+            ? Path.GetFullPath(Path.Combine(basePath, relative))
+            : basePath;
+    }
+
+    /// <summary>
+    /// Resolves a <c>uriBaseId</c> through the run's
+    /// <c>originalUriBaseIds</c>; a base's own URI may itself be relative
+    /// (resolved against its own base, or the caller's directory) or a
+    /// <c>file://</c> URI. Unknown ids resolve to null, leaving the caller
+    /// to fall back.
+    /// </summary>
+    private static string? ResolveUriBase(string id, RunInfo run, string? baseDirectory, int depth)
+    {
+        if (depth > 8)
+            return null;
+        if (!run.UriBases.TryGetValue(id, out var entry))
+            return null;
+        var (uri, baseId) = entry;
+
+        var parent = baseId != null
+            ? ResolveUriBase(baseId, run, baseDirectory, depth + 1)
+            : baseDirectory;
+        if (uri == null)
+            return parent;
         if (uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
             && Uri.TryCreate(uri, UriKind.Absolute, out var fileUri))
         {
             return fileUri.LocalPath;
         }
-
         var path = Uri.UnescapeDataString(uri);
-        if (baseDirectory != null && !Path.IsPathRooted(path))
-            return Path.GetFullPath(Path.Combine(baseDirectory, path));
-        return path;
+        if (Path.IsPathRooted(path))
+            return path;
+        return parent != null ? Path.GetFullPath(Path.Combine(parent, path)) : path;
     }
 
     private static string? GetString(JsonElement element, string property) =>
