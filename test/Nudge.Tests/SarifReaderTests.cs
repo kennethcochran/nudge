@@ -248,6 +248,183 @@ public sealed class SarifReaderTests
     // ErrorLog's Info-severity finding is coached (with a real guide)
     // alongside the warning/error findings, and nothing is dropped for
     // lacking a guide — uncatalogued rules surface as uncoached findings.
+    // --- Validation and kind/dedupe semantics (CodeRabbit review, PR #12) ---
+
+    [Test]
+    public void Parse_MissingVersion_ThrowsFormatException()
+    {
+        // {"runs":[]} without a version used to read as a clean report.
+        Assert.That(() => SarifReader.Parse("""{ "runs": [] }"""),
+            Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Parse_RunWithoutResultsArray_ThrowsFormatException()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{ "tool": { "driver": { "name": "test" } } }]
+            }
+            """;
+
+        Assert.That(() => SarifReader.Parse(sarif),
+            Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Parse_RunWithNonArrayResults_ThrowsFormatException()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{ "tool": { "driver": { "name": "test" } }, "results": {} }]
+            }
+            """;
+
+        Assert.That(() => SarifReader.Parse(sarif),
+            Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Parse_EmptyResultsArray_IsAValidCleanRun()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{ "tool": { "driver": { "name": "test" } }, "results": [] }]
+            }
+            """;
+
+        Assert.That(SarifReader.Parse(sarif), Is.Empty);
+    }
+
+    [Test]
+    public void Parse_PassAndNotApplicableResults_AreNotFindings()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test", "rules": [] } },
+                "results": [
+                  { "ruleId": "X1000", "kind": "pass",
+                    "message": { "text": "check passed" } },
+                  { "ruleId": "X1001", "kind": "notApplicable",
+                    "message": { "text": "does not apply" } },
+                  { "ruleId": "X1002", "kind": "fail", "level": "warning",
+                    "message": { "text": "real finding" } }
+                ]
+              }]
+            }
+            """;
+
+        var diagnostics = SarifReader.Parse(sarif);
+
+        Assert.That(diagnostics, Has.Count.EqualTo(1));
+        Assert.That(diagnostics[0].RuleId, Is.EqualTo("X1002"));
+    }
+
+    [Test]
+    public void Parse_DuplicateResults_KeepTheHighestSeverity()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [
+                {
+                  "tool": { "driver": { "name": "test", "rules": [] } },
+                  "results": [{ "ruleId": "X1000", "level": "warning",
+                    "message": { "text": "same finding" },
+                    "locations": [{ "physicalLocation": {
+                      "artifactLocation": { "uri": "A.cs" },
+                      "region": { "startLine": 2 } } }] }]
+                },
+                {
+                  "tool": { "driver": { "name": "test", "rules": [] } },
+                  "results": [{ "ruleId": "X1000", "level": "error",
+                    "message": { "text": "same finding" },
+                    "locations": [{ "physicalLocation": {
+                      "artifactLocation": { "uri": "A.cs" },
+                      "region": { "startLine": 2 } } }] }]
+                }
+              ]
+            }
+            """;
+
+        var diagnostics = SarifReader.Parse(sarif);
+
+        Assert.That(diagnostics, Has.Count.EqualTo(1));
+        Assert.That(diagnostics[0].IsError, Is.True,
+            "dedupe must not discard the error-level copy of a finding");
+    }
+
+    [Test]
+    public void Parse_UriBaseId_ResolvesThroughOriginalUriBaseIds()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test", "rules": [] } },
+                "originalUriBaseIds": {
+                  "SRCROOT": { "uri": "file:///repo%20root/" }
+                },
+                "results": [{
+                  "ruleId": "X1000", "level": "note",
+                  "message": { "text": "based finding" },
+                  "locations": [{ "physicalLocation": {
+                    "artifactLocation": { "uri": "src/A.cs", "uriBaseId": "SRCROOT" },
+                    "region": { "startLine": 4 } } }]
+                }]
+              }]
+            }
+            """;
+
+        // The caller base directory must NOT win over the log's own base.
+        var diagnostics = SarifReader.Parse(sarif, baseDirectory: "/somewhere else");
+
+        Assert.That(diagnostics[0].File,
+            Is.EqualTo(Path.GetFullPath(Path.Combine("/repo root", "src/A.cs"))));
+    }
+
+    [Test]
+    public void Parse_ResultWithoutMessage_ThrowsFormatException()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test", "rules": [] } },
+                "results": [{ "ruleId": "X1000", "level": "warning" }]
+              }]
+            }
+            """;
+
+        Assert.That(() => SarifReader.Parse(sarif),
+            Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Parse_ResultWithUnresolvedMessageId_ThrowsFormatException()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test", "rules": [] } },
+                "results": [{
+                  "ruleId": "X1000", "level": "warning",
+                  "message": { "id": "no-such-string" }
+                }]
+              }]
+            }
+            """;
+
+        Assert.That(() => SarifReader.Parse(sarif),
+            Throws.TypeOf<FormatException>());
+    }
+
     [Test]
     public void CoachPipeline_RealErrorLog_InfoFindingIsCoachedAlongsideWarningAndError()
     {
