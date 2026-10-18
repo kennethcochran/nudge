@@ -1,20 +1,26 @@
 namespace Nudge;
 
 /// <summary>
-/// Installs the nudge-ruleset-gen skill into AI coding harnesses so their agents
-/// can generate Nudge rulesets for analyzers nobody has covered yet.
-/// The skill ships inside the nudge tool package under skills/nudge-ruleset-gen/.
+/// Installs the nudge skills into AI coding harnesses: nudge-ruleset-gen (generate
+/// Nudge rulesets for analyzers nobody has covered yet) and nudge-coaching (the
+/// build → report → fix → rebuild loop). The skills ship inside the nudge tool
+/// package under skills/&lt;skill-name&gt;/.
 /// </summary>
 internal static class SkillInstaller
 {
     public const string SkillName = "nudge-ruleset-gen";
+    public const string CoachingSkillName = "nudge-coaching";
+
+    /// <summary>Every skill the tool ships, in install order.</summary>
+    public static readonly IReadOnlyList<string> KnownSkills =
+        new List<string> { SkillName, CoachingSkillName };
 
     /// <summary>
     /// A harness and where it looks for skills: home-relative directory for
     /// global installs, cwd-relative directory for per-project installs.
     /// Paths come from each harness's documentation and the agentskills.io
-    /// interop convention; see INSTALL.md in the skill directory for sources
-    /// and gotchas.
+    /// interop convention; see the README's "Installing the skills" section
+    /// for the matrix and per-harness gotchas.
     /// </summary>
     internal sealed record Harness(string Name, string GlobalDir, string ProjectDir);
 
@@ -49,21 +55,26 @@ internal static class SkillInstaller
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
     /// <summary>
-    /// Locates the skill source bundled with the tool (skills/nudge-ruleset-gen/
-    /// next to the binary), or null when it isn't there.
+    /// Locates the source of the named skill bundled with the tool
+    /// (skills/&lt;skill-name&gt;/ next to the binary), or null when it isn't there.
     /// </summary>
-    public static string? FindSkillSource()
+    public static string? FindSkillSource(string skillName)
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "skills", SkillName);
+        var dir = Path.Combine(AppContext.BaseDirectory, "skills", skillName);
         return Directory.Exists(dir) && File.Exists(Path.Combine(dir, "SKILL.md")) ? dir : null;
     }
 
+    /// <summary>Locates the nudge-ruleset-gen skill source; see <see cref="FindSkillSource(string)"/>.</summary>
+    public static string? FindSkillSource() => FindSkillSource(SkillName);
+
     /// <summary>
     /// Resolves the full target directories (each ending in the skill folder)
-    /// for the named harnesses. Unknown names throw <see cref="CliUsageException"/>.
+    /// for the named harnesses and skill. Unknown harness names throw
+    /// <see cref="CliUsageException"/>.
     /// </summary>
     public static IReadOnlyList<string> ResolveTargets(
-        IEnumerable<string> harnessNames, bool globalScope, string homeDir, string projectDir)
+        IEnumerable<string> harnessNames, bool globalScope, string homeDir, string projectDir,
+        string skillName)
     {
         var targets = new List<string>();
         foreach (var name in harnessNames)
@@ -76,10 +87,15 @@ internal static class SkillInstaller
             var root = globalScope
                 ? Path.Combine(homeDir, harness.GlobalDir)
                 : Path.Combine(projectDir, harness.ProjectDir);
-            targets.Add(Path.Combine(root, SkillName));
+            targets.Add(Path.Combine(root, skillName));
         }
         return targets.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    /// <summary>Resolves targets for nudge-ruleset-gen; see the skill-named overload.</summary>
+    public static IReadOnlyList<string> ResolveTargets(
+        IEnumerable<string> harnessNames, bool globalScope, string homeDir, string projectDir) =>
+        ResolveTargets(harnessNames, globalScope, homeDir, projectDir, SkillName);
 
     /// <summary>
     /// Copies the skill into each target directory. Existing installs are
@@ -136,25 +152,30 @@ internal static class SkillInstaller
     }
 
     /// <summary>
-    /// Reports every location where the skill is currently installed, across all
-    /// known harness directories (global under <paramref name="homeDir"/>,
-    /// project under <paramref name="projectDir"/>).
+    /// Reports every location where any known skill is currently installed,
+    /// across all known harness directories (global under
+    /// <paramref name="homeDir"/>, project under <paramref name="projectDir"/>).
+    /// Each returned directory ends in the skill's folder name, so the skill
+    /// it holds is identifiable from the path.
     /// </summary>
     public static IReadOnlyList<string> ListInstalled(string homeDir, string projectDir)
     {
         var found = new List<string>();
-        foreach (var harness in Harnesses)
+        foreach (var skillName in KnownSkills)
         {
-            foreach (var root in new[]
-                     {
-                         Path.Combine(homeDir, harness.GlobalDir),
-                         Path.Combine(projectDir, harness.ProjectDir),
-                     })
+            foreach (var harness in Harnesses)
             {
-                var dir = Path.Combine(root, SkillName);
-                if (File.Exists(Path.Combine(dir, "SKILL.md")) &&
-                    !found.Contains(dir, StringComparer.OrdinalIgnoreCase))
-                    found.Add(dir);
+                foreach (var root in new[]
+                         {
+                             Path.Combine(homeDir, harness.GlobalDir),
+                             Path.Combine(projectDir, harness.ProjectDir),
+                         })
+                {
+                    var dir = Path.Combine(root, skillName);
+                    if (File.Exists(Path.Combine(dir, "SKILL.md")) &&
+                        !found.Contains(dir, StringComparer.OrdinalIgnoreCase))
+                        found.Add(dir);
+                }
             }
         }
         return found;

@@ -48,4 +48,41 @@ public sealed class InitRspLineTests
             Assert.That(Program.IsInitManagedLine("/warnaserror"), Is.False);
         });
     }
+
+    [Test]
+    public void ConsoleLoggerLine_IsInitManagedAndCarriesTheParameter()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(Program.InitConsoleLoggerLine, Does.Contain(";console=true"));
+            Assert.That(Program.IsInitManagedLine(Program.InitConsoleLoggerLine), Is.True);
+        });
+    }
+
+    [Test]
+    public void StripInitLines_RemovesConsoleModeSwitchFromAnInitInstall()
+    {
+        var lines = new[]
+        {
+            "/warnaserror",
+            Program.InitMarker + " — loads the nudge MSBuild logger",
+            Program.InitNoConsoleLine,
+            Program.InitConsoleLoggerLine,
+        };
+
+        var remaining = Program.StripInitLines(lines);
+
+        Assert.That(remaining, Is.EqualTo(new[] { "/warnaserror" }));
+    }
+
+    [Test]
+    public void StripInitLines_KeepsAUsersOwnNoConsoleLoggerSwitch()
+    {
+        // No init installation in the file: the generic switch is the user's.
+        var lines = new[] { Program.InitNoConsoleLine, "/warnaserror" };
+
+        var remaining = Program.StripInitLines(lines);
+
+        Assert.That(remaining, Is.EqualTo(lines));
+    }
 }
