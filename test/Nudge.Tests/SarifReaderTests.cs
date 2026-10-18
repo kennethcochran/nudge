@@ -225,8 +225,9 @@ public sealed class SarifReaderTests
     [Test]
     public void Parse_InvalidJson_ThrowsLoudly()
     {
+        // JsonException or a subclass (JsonReaderException on current runtimes).
         Assert.That(() => SarifReader.Parse("{ not json"),
-            Throws.TypeOf<JsonException>());
+            Throws.InstanceOf<JsonException>());
     }
 
     [Test]
