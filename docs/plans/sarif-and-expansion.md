@@ -103,10 +103,13 @@ analysis tools — without painting the architecture into a corner.
    wrapper, because different families force different transports and
    the stream law is the only constant.
 6. **Baseline semantics are source-independent**, keyed on the finding,
-   not on the channel that delivered it. (Habit Hooks' content-keyed
-   snooze — editing a snoozed file re-arms its findings — is recorded
-   as a candidate improvement to the current
-   code|file|line|message key; not scheduled.)
+   not on the channel that delivered it. The current baseline key is
+   `RULEID|path/relative/to/repo-root` — or `RULEID|(no file)` for
+   unlocated findings — with line number and message deliberately
+   excluded, so code motion within a file does not resurrect a snoozed
+   finding. (Habit Hooks' content-keyed snooze — editing a snoozed file
+   re-arms its findings — is recorded as a candidate improvement to
+   that key; not scheduled.)
 
 ## Slice sequence
 
