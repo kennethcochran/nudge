@@ -426,6 +426,61 @@ public sealed class SarifReaderTests
     }
 
     [Test]
+    public void Parse_NonObjectRun_ThrowsFormatException()
+    {
+        // A scalar run element must follow the documented contract
+        // (FormatException), not InvalidOperationException from an
+        // unguarded TryGetProperty. (CodeRabbit, PR #12, second review.)
+        Assert.That(() => SarifReader.Parse("""{ "version": "2.1.0", "runs": [42] }"""),
+            Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Parse_NonObjectResult_ThrowsFormatException()
+    {
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test", "rules": [] } },
+                "results": [42]
+              }]
+            }
+            """;
+
+        Assert.That(() => SarifReader.Parse(sarif),
+            Throws.TypeOf<FormatException>());
+    }
+
+    [Test]
+    public void Parse_UnknownUriBaseId_FallsBackToBaseDirectory()
+    {
+        // Some tools emit a symbolic base ("%SRCROOT%") with no
+        // originalUriBaseIds entry; the caller's base directory is the
+        // fallback, not a raw relative path. (CodeRabbit, PR #12.)
+        const string sarif = """
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test", "rules": [] } },
+                "results": [{
+                  "ruleId": "X1000", "level": "note",
+                  "message": { "text": "based finding" },
+                  "locations": [{ "physicalLocation": {
+                    "artifactLocation": { "uri": "src/A.cs", "uriBaseId": "%SRCROOT%" },
+                    "region": { "startLine": 4 } } }]
+                }]
+              }]
+            }
+            """;
+
+        var diagnostics = SarifReader.Parse(sarif, baseDirectory: "/repo root");
+
+        Assert.That(diagnostics[0].File,
+            Is.EqualTo(Path.GetFullPath(Path.Combine("/repo root", "src/A.cs"))));
+    }
+
+    [Test]
     public void CoachPipeline_RealErrorLog_InfoFindingIsCoachedAlongsideWarningAndError()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
