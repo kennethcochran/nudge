@@ -40,7 +40,8 @@ public static class SarifReader
     /// <exception cref="FormatException">
     /// The JSON is not a SARIF 2.1.0 log: missing or unsupported
     /// <c>version</c>, no <c>runs</c> array, a run without a <c>results</c>
-    /// array, or a result without a resolvable <c>message</c>.
+    /// array, a non-object run/result element, or a result without a
+    /// resolvable <c>message</c>.
     /// </exception>
     public static IReadOnlyList<BuildDiagnostic> Parse(string sarifText, string? baseDirectory = null)
     {
@@ -70,6 +71,8 @@ public static class SarifReader
 
         foreach (var run in runs.EnumerateArray())
         {
+            if (run.ValueKind != JsonValueKind.Object)
+                throw new FormatException("Invalid SARIF log: a run is not an object.");
             var runInfo = ReadRunInfo(run);
             // The SARIF schema requires every run to carry its results
             // array (possibly empty). A missing or non-array value means
@@ -82,6 +85,8 @@ public static class SarifReader
             }
             foreach (var sarifResult in results.EnumerateArray())
             {
+                if (sarifResult.ValueKind != JsonValueKind.Object)
+                    throw new FormatException("Invalid SARIF log: a result is not an object.");
                 // A passed or inapplicable check is not a finding.
                 var kind = GetString(sarifResult, "kind");
                 if (kind is "pass" or "notApplicable")
@@ -142,8 +147,8 @@ public static class SarifReader
         var globalStrings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var uriBases = new Dictionary<string, (string?, string?)>(StringComparer.OrdinalIgnoreCase);
 
-        if (run.TryGetProperty("tool", out var tool)
-            && tool.TryGetProperty("driver", out var driver))
+        if (TryGetObjectProperty(run, "tool", out var tool)
+            && TryGetObjectProperty(tool, "driver", out var driver))
         {
             if (driver.TryGetProperty("globalMessageStrings", out var globals))
                 ReadMessageStrings(globals, globalStrings);
@@ -153,6 +158,9 @@ public static class SarifReader
             {
                 foreach (var rule in rules.EnumerateArray())
                 {
+                    if (rule.ValueKind != JsonValueKind.Object)
+                        throw new FormatException(
+                            "Invalid SARIF log: a rule descriptor is not an object.");
                     var id = GetString(rule, "id") ?? string.Empty;
                     ids.Add(id);
                     if (id.Length == 0)
@@ -221,11 +229,11 @@ public static class SarifReader
         if (result.TryGetProperty("locations", out var locations)
             && locations.ValueKind == JsonValueKind.Array
             && locations.GetArrayLength() > 0
-            && locations[0].TryGetProperty("physicalLocation", out var physical))
+            && TryGetObjectProperty(locations[0], "physicalLocation", out var physical))
         {
-            if (physical.TryGetProperty("artifactLocation", out var artifact))
+            if (TryGetObjectProperty(physical, "artifactLocation", out var artifact))
                 file = ResolveArtifactUri(artifact, run, baseDirectory);
-            if (physical.TryGetProperty("region", out var region))
+            if (TryGetObjectProperty(physical, "region", out var region))
             {
                 line = GetInt(region, "startLine");
                 column = GetInt(region, "startColumn");
@@ -333,7 +341,7 @@ public static class SarifReader
             return null;
 
         var basePath = baseId != null
-            ? ResolveUriBase(baseId, run, baseDirectory, depth: 0)
+            ? ResolveUriBase(baseId, run, baseDirectory, depth: 0) ?? baseDirectory
             : baseDirectory;
         var relative = uri != null ? Uri.UnescapeDataString(uri) : string.Empty;
         if (basePath == null)
@@ -372,6 +380,20 @@ public static class SarifReader
         if (Path.IsPathRooted(path))
             return path;
         return parent != null ? Path.GetFullPath(Path.Combine(parent, path)) : path;
+    }
+
+    /// <summary>
+    /// Property lookup that is safe on any element: a non-object element
+    /// simply has no properties. (<see cref="JsonElement.TryGetProperty"/>
+    /// itself throws <see cref="InvalidOperationException"/> on non-object
+    /// elements; malformed SARIF must surface as
+    /// <see cref="FormatException"/> per this reader's contract.)
+    /// </summary>
+    private static bool TryGetObjectProperty(JsonElement element, string property, out JsonElement value)
+    {
+        value = default;
+        return element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty(property, out value);
     }
 
     private static string? GetString(JsonElement element, string property) =>
