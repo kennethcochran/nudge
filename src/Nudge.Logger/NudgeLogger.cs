@@ -16,6 +16,9 @@ namespace Nudge.Logger;
 /// <c>.nudge/baseline.txt</c>. May be absolute (e.g. via
 /// <c>%MSBuildThisFileDirectory%</c> in the .rsp) or relative to the build's
 /// working directory. Baselined (snoozed) findings get no coaching.</item>
+/// <item><c>sarifdir</c> — directory holding the per-project ErrorLog
+/// SARIF files read at build end. Defaults to <c>.nudge/sarif</c> under the
+/// repo root (derived from the baseline path).</item>
 /// <item><c>console</c> — when <c>true</c>, the logger also acts as the
 /// build's console logger (install with <c>nudge init --console-logger</c>,
 /// which adds <c>/noconsolelogger</c>): it prints every diagnostic itself in
@@ -28,6 +31,13 @@ namespace Nudge.Logger;
 /// find afterwards: the first occurrence of a rule in a build gets the full
 /// guide (Why / Do this / AVOID); repeats of the same rule get a one-line
 /// reminder. Diagnostics with no recorded guide print nothing extra.
+///
+/// Info-severity findings never reach the event stream at all, so they are
+/// coached from a second channel: at build end the logger reads the
+/// per-project ErrorLog SARIF files (arranged by <c>nudge init</c> in
+/// <c>Directory.Build.props</c>) and coaches the note/none findings in
+/// them. The partition is disjoint by construction — events own
+/// warning/error, the SARIF pass owns note/none.
 ///
 /// The logger never fails the build: coaching, not gating. Any internal
 /// failure is swallowed with a one-line notice so a broken logger can never
@@ -48,9 +58,11 @@ public sealed class NudgeLogger : ILogger
     private bool _setupDone;
     private bool _consoleMode;
     private bool _summaryPrinted;
+    private bool _sarifFinishDone;
     private bool _failureNoted;
     private HashSet<string> _baseline = new(StringComparer.OrdinalIgnoreCase);
     private string _rootDir = Directory.GetCurrentDirectory();
+    private string? _sarifDir;
     private RuleCatalog? _catalog;
 
     public void Initialize(IEventSource eventSource)
@@ -135,6 +147,15 @@ public sealed class NudgeLogger : ILogger
             try
             {
                 EnsureSetup();
+
+                // The SARIF finish runs in both modes, exactly once: it is
+                // the only channel that can coach Info-severity findings.
+                if (!_sarifFinishDone)
+                {
+                    _sarifFinishDone = true;
+                    CoachSarifFindings();
+                }
+
                 if (!_consoleMode || _summaryPrinted)
                     return;
                 _summaryPrinted = true;
@@ -157,6 +178,71 @@ public sealed class NudgeLogger : ILogger
                 NoteFailure(ex);
             }
         }
+    }
+
+    /// <summary>
+    /// Coaches the note/none findings in the per-project ErrorLog SARIF
+    /// files under <see cref="_sarifDir"/>. Warning/error results in those
+    /// files are ignored — the event stream owns them, and coaching both
+    /// channels would double-print. Each surviving finding prints its
+    /// diagnostic line (it never appeared in the console output) followed
+    /// by the same coaching the event path gives: full guide on the rule's
+    /// first occurrence in the build, one-line reminder after.
+    /// </summary>
+    private void CoachSarifFindings()
+    {
+        if (_sarifDir == null || _catalog == null || !Directory.Exists(_sarifDir))
+            return;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var unreadable = 0;
+        foreach (var file in Directory.EnumerateFiles(_sarifDir, "*.sarif")
+                     .OrderBy(f => f, StringComparer.Ordinal))
+        {
+            IReadOnlyList<BuildDiagnostic> results;
+            try
+            {
+                results = SarifReader.ReadFile(file, _rootDir);
+            }
+            catch (Exception)
+            {
+                // One bad file must not lose the others; it is reported
+                // once, below, rather than silently dropped.
+                unreadable++;
+                continue;
+            }
+
+            foreach (var diagnostic in results)
+            {
+                if (!diagnostic.Severity.Equals("note", StringComparison.OrdinalIgnoreCase)
+                    && !diagnostic.Severity.Equals("none", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Same dedupe key as the event path: multi-targeted
+                // projects repeat a finding across their SARIF runs.
+                var key = $"{diagnostic.RuleId}|{diagnostic.File}|{diagnostic.Line}|{diagnostic.Message}";
+                if (!seen.Add(key))
+                    continue;
+
+                if (Baseline.IsSnoozed(diagnostic, _baseline, _rootDir))
+                    continue;
+                if (_catalog.UsesFallback(diagnostic.RuleId))
+                    continue;
+
+                WriteLines(FormatDiagnostic(diagnostic));
+                if (!_coachedRules.Add(diagnostic.RuleId))
+                {
+                    WriteLines($"nudge: {diagnostic.RuleId} — coaching printed with its first occurrence in this build.");
+                    continue;
+                }
+
+                var guide = _catalog.Resolve(diagnostic.RuleId, diagnostic.Message);
+                WriteLines(RenderCoaching(guide));
+            }
+        }
+
+        if (unreadable > 0)
+            WriteLines($"nudge: {unreadable} SARIF file(s) under {_sarifDir} could not be read; their findings were not coached.");
     }
 
     private static string FormatDiagnostic(BuildDiagnostic d)
@@ -211,6 +297,9 @@ public sealed class NudgeLogger : ILogger
                 ".nudge", StringComparison.OrdinalIgnoreCase)
             ? Path.GetDirectoryName(baselineDir) ?? baselineDir
             : baselineDir;
+
+        _sarifDir = Path.GetFullPath(parameters.GetValueOrDefault(
+            "sarifdir", Path.Combine(_rootDir, ".nudge", "sarif")));
 
         _baseline = Baseline.Load(baselinePath);
         var rulesDir = Directory.Exists(Path.Combine(
