@@ -98,19 +98,22 @@ public static class Reporter
     }
 
     /// <summary>
-    /// The severity word shown for a group: the most severe level present
-    /// (error &gt; warning &gt; note &gt; none). Findings that arrive via
-    /// SARIF carry the note/none levels the build event stream never
-    /// delivers; labelling a pure note group "warning" would misstate it.
+    /// Severity levels in precedence order, most severe first. The word
+    /// shown for a group is the first level in this table that the group
+    /// contains.
+    /// </summary>
+    private static readonly string[] SeverityPrecedence = ["error", "warning", "note", "none"];
+
+    /// <summary>
+    /// The severity word shown for a group: the most severe level present.
+    /// Findings that arrive via SARIF carry the note/none levels the build
+    /// event stream never delivers; labelling a pure note group "warning"
+    /// would misstate it.
     /// </summary>
     private static string DisplaySeverity(IEnumerable<BuildDiagnostic> group)
     {
         var severities = group.Select(d => d.Severity).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (severities.Contains("error")) return "error";
-        if (severities.Contains("warning")) return "warning";
-        if (severities.Contains("note")) return "note";
-        if (severities.Contains("none")) return "none";
-        return "warning";
+        return SeverityPrecedence.FirstOrDefault(severities.Contains) ?? "warning";
     }
 
     private static string Shorten(string file, string rootDir)
