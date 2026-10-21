@@ -26,6 +26,14 @@ public sealed class InitRspLineTests
     }
 
     [Test]
+    public void InitLoggerLine_QuotesSarifDirPath()
+    {
+        Assert.That(Program.InitLoggerLine,
+            Does.Contain("sarifdir=\"%MSBuildThisFileDirectory%.nudge/sarif\""),
+            "the logger's SARIF-finish directory travels quoted, like the other paths");
+    }
+
+    [Test]
     public void IsInitManagedLine_MatchesMarkerAndOwnRegistration()
     {
         Assert.Multiple(() =>

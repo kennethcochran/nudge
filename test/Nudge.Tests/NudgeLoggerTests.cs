@@ -239,6 +239,154 @@ public sealed class NudgeLoggerTests
         });
     }
 
+    /// <summary>Writes a minimal SARIF log with one result per entry into the
+    /// logger's default SARIF directory (&lt;root&gt;/.nudge/sarif).</summary>
+    private void WriteSarif(
+        string fileName, params (string RuleId, string Level, string Message, int Line)[] results)
+    {
+        var sarifDir = Path.Combine(_tempDir, ".nudge", "sarif");
+        Directory.CreateDirectory(sarifDir);
+        var rendered = string.Join(", ", results.Select(r => $$"""
+            {
+              "ruleId": "{{r.RuleId}}",
+              "level": "{{r.Level}}",
+              "message": { "text": "{{r.Message}}" },
+              "locations": [{ "physicalLocation": {
+                "artifactLocation": { "uri": "src/Foo.cs" },
+                "region": { "startLine": {{r.Line}}, "startColumn": 5 } } }]
+            }
+            """));
+        File.WriteAllText(Path.Combine(sarifDir, fileName), $$"""
+            {
+              "version": "2.1.0",
+              "runs": [{
+                "tool": { "driver": { "name": "test" } },
+                "results": [{{rendered}}]
+              }]
+            }
+            """);
+    }
+
+    [Test]
+    public void BuildFinished_CoachesNoteFindingsFromSarif_AndOnlyNoteFindings()
+    {
+        // The SARIF finish (slice 2): Info-severity findings never reach
+        // the event stream, so they are coached from the ErrorLog SARIF at
+        // build end. Warning results in the same files are the event
+        // stream's to coach — the partition must not double-coach them.
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9998");
+        WriteSarif("Foo.sarif",
+            ("T9999", "note", "Something smells.", 12),
+            ("T9998", "warning", "Something warns.", 20));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(output, Does.Contain("note T9999: Something smells."),
+                "the finding itself is printed — it never appeared in the build output");
+            Assert.That(output, Does.Contain("nudge: coaching for T9999 — Test rule"));
+            Assert.That(output, Does.Not.Contain("T9998"),
+                "warning/error results in SARIF belong to the event stream");
+        });
+    }
+
+    [Test]
+    public void BuildFinished_SarifFindingForAnAlreadyCoachedRule_GetsTheReminderOnly()
+    {
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        WriteSarif("Foo.sarif", ("T9999", "note", "Something smells.", 30));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseWarning("T9999", "Something smells.", Path.Combine(_tempDir, "src", "Foo.cs"), 12);
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(CountOccurrences(output, "nudge: coaching for T9999"), Is.EqualTo(1),
+                "the full guide prints once per rule per build, whichever channel arrives first");
+            Assert.That(output, Does.Contain(
+                "nudge: T9999 — coaching printed with its first occurrence in this build."));
+        });
+    }
+
+    [Test]
+    public void BuildFinished_BaselinedSarifFinding_GetsNoCoaching()
+    {
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        var baselinePath = Path.Combine(_tempDir, ".nudge", "baseline.txt");
+        File.WriteAllText(baselinePath, "T9999|src/Foo.cs\n");
+        WriteSarif("Foo.sarif", ("T9999", "note", "Something smells.", 12));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.That(output, Does.Not.Contain("nudge:"),
+            "the baseline applies to SARIF findings exactly as to event findings");
+    }
+
+    [Test]
+    public void BuildFinished_DuplicateSarifFindingsAcrossFiles_CoachedOnce()
+    {
+        // Multi-targeted projects repeat a finding in each project's
+        // ErrorLog; the finish dedupes across files like the event path
+        // dedupes across frameworks.
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        WriteSarif("A.sarif", ("T9999", "note", "Something smells.", 12));
+        WriteSarif("B.sarif", ("T9999", "note", "Something smells.", 12));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.That(CountOccurrences(output, "note T9999: Something smells."), Is.EqualTo(1));
+        Assert.That(CountOccurrences(output, "nudge: coaching for T9999"), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void BuildFinished_UnreadableSarifFile_IsReportedAndOthersStillCoached()
+    {
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        var sarifDir = Path.Combine(_tempDir, ".nudge", "sarif");
+        Directory.CreateDirectory(sarifDir);
+        File.WriteAllText(Path.Combine(sarifDir, "Broken.sarif"), "{ this is not sarif");
+        WriteSarif("Foo.sarif", ("T9999", "note", "Something smells.", 12));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(output, Does.Contain("nudge: coaching for T9999 — Test rule"));
+            Assert.That(output, Does.Contain("could not be read"),
+                "an unreadable SARIF file is reported, not silently dropped");
+        });
+    }
+
+    [Test]
+    public void BuildFinished_NoSarifDirectory_PrintsNothing()
+    {
+        // A repo where init never arranged ErrorLog (or the build compiled
+        // nothing): the finish is a silent no-op.
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.That(output, Does.Not.Contain("nudge:"));
+    }
+
     /// <summary>Minimal <see cref="IEventSource"/> stub: only the events the
     /// logger subscribes to are raisable; the rest are never fired.</summary>
     private sealed class FakeEventSource : IEventSource

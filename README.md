@@ -120,6 +120,13 @@ is never failed by the logger — nudge coaches, it doesn't gate. (Earlier
 versions wrote a `.nudge/report.md` report and an end-of-build pointer line;
 the inline design replaces that — a stale `report.md` is safe to delete.)
 
+Info-severity findings (suggestion-level analyzer rules) never reach a
+build logger at all — no event carries them. Those are coached from a
+second channel: `nudge init` arranges a per-project compiler ErrorLog, and
+at the end of the build the logger reads the SARIF files and prints each
+Info finding with the same coaching. To inspect a SARIF log on its own,
+`nudge coach <file.sarif>` prints the full grouped report.
+
 Prefer a quieter output? `nudge init --console-logger` goes one step
 further: the nudge logger replaces the default console logger
 (`/noconsolelogger`) and prints every diagnostic itself in canonical
@@ -133,8 +140,14 @@ What `nudge init` actually installs:
   Re-running `nudge init` after a nudge upgrade refreshes them.
 - A `/logger:` line (plus a marker comment) in `Directory.Build.rsp` at the
   repo root, merged with any content already there. The line points MSBuild
-  at the payload and at the baseline, `.nudge/baseline.txt`. Console mode
-  adds a `/noconsolelogger` line alongside.
+  at the payload, at the baseline (`.nudge/baseline.txt`), and at the SARIF
+  directory (`.nudge/sarif`). Console mode adds a `/noconsolelogger` line
+  alongside.
+- A labelled `ErrorLog` group in `Directory.Build.props` at the repo root,
+  merged the same way: one compiler SARIF log per project, written to
+  `.nudge/sarif/<project>.sarif`. If your props already set `ErrorLog`,
+  init detects it and leaves it exactly as is — your arrangement wins, and
+  only the location nudge arranged gets the build-end coaching.
 
 > **Trust note:** an MSBuild logger is code that executes inside every build
 > of the repo. That is exactly why installation is an explicit, per-repo
