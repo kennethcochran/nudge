@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 
 namespace Nudge;
 
@@ -19,6 +20,8 @@ internal static class Program
             return RunExplainCommand(args.Skip(1).ToArray());
         if (args.Length > 0 && args[0].Equals("init", StringComparison.OrdinalIgnoreCase))
             return RunInitCommand(args.Skip(1).ToArray());
+        if (args.Length > 0 && args[0].Equals("coach", StringComparison.OrdinalIgnoreCase))
+            return RunCoachCommand(args.Skip(1).ToArray());
 
         CliOptions options;
         try
@@ -338,6 +341,89 @@ internal static class Program
                 Console.WriteLine($"  {r}");
         }
         return 0;
+    }
+
+    private const string CoachUsage = """
+        Usage: nudge coach <file.sarif> [--rules <dir>] [--baseline <file>]
+
+        Reads a SARIF 2.1.0 log — a compiler ErrorLog, or native SARIF from a
+        standalone tool (InspectCode, CodeQL, Semgrep, …) — and prints the
+        grouped coached report to stdout. This is the channel that carries
+        Info-severity (note) and none-level findings, which never reach the
+        build event stream. Rules without a coaching guide surface as
+        uncoached findings; they are never dropped.
+
+        Honours the baseline: --baseline <file> when given, otherwise the
+        repo's .nudge/baseline.txt when one exists.
+
+        Exit codes (the established contract): 0 clean, 1 findings,
+        2 failure — an error-level finding, an unreadable or invalid SARIF
+        file, or invalid arguments.
+        """;
+
+    /// <summary>
+    /// The post-hoc SARIF front end: coach findings from a SARIF log file,
+    /// rendered to stdout (never to a file an agent must go find).
+    /// </summary>
+    private static int RunCoachCommand(string[] args)
+    {
+        try
+        {
+            string? sarifPath = null;
+            string? rulesDirOption = null;
+            string? baselineOption = null;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "--rules" && i + 1 < args.Length)
+                    rulesDirOption = args[++i];
+                else if (args[i] == "--baseline" && i + 1 < args.Length)
+                    baselineOption = args[++i];
+                else if (!args[i].StartsWith("-") && sarifPath == null)
+                    sarifPath = args[i];
+                else
+                    throw new CliUsageException($"Unknown argument: {args[i]}");
+            }
+            if (sarifPath == null)
+                throw new CliUsageException("nudge coach requires a SARIF file path.");
+            if (!File.Exists(sarifPath))
+                throw new CliUsageException($"SARIF file not found: {sarifPath}");
+
+            var rootDir = FindRepoRoot();
+            var rulesDir = ResolveRulesDir(rulesDirOption, rootDir);
+            var catalog = RuleCatalog.WithInstalledRulesets(rulesDir);
+            var baseline = Baseline.Load(baselineOption
+                ?? Path.Combine(rootDir, ".nudge", "baseline.txt"));
+
+            var diagnostics = SarifReader.ReadFile(
+                sarifPath, baseDirectory: Path.GetDirectoryName(Path.GetFullPath(sarifPath)));
+            var result = CoachingEngine.Generate(
+                diagnostics, catalog, baseline, rootDir,
+                Path.GetFileName(sarifPath), buildFailed: false);
+            Console.Write(result.Report);
+
+            SuggestMissingRulesets(result.FallbackRuleIds, rootDir);
+
+            // Established contract, same as the build path: error-level
+            // findings are a failure (2), lesser findings are 1, clean is 0.
+            return result.HasErrors ? 2 : result.FindingCount > 0 ? 1 : 0;
+        }
+        catch (CliUsageException ex)
+        {
+            if (ex.Message != null)
+                Console.Error.WriteLine($"Error: {ex.Message}\n");
+            Console.Error.WriteLine(CoachUsage);
+            return 2;
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or IOException)
+        {
+            Console.Error.WriteLine($"nudge coach failed: {ex.Message}");
+            return 2;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"nudge coach failed: {ex.Message}");
+            return 2;
+        }
     }
 
     private static int RunExplainCommand(string[] args)

@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json.schemastore.org/sarif-2.1.0",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Microsoft (R) Visual C# Compiler",
+          "version": "5.9.0-1.26423.113 (e34a38d2ae1fc26406a317517196e55c68ff83ab)",
+          "rules": [
+            {
+              "id": "CS0219",
+              "shortDescription": {
+                "text": "Variable is assigned but its value is never used"
+              },
+              "helpUri": "https://msdn.microsoft.com/query/roslyn.query?appId=roslyn&k=k(CS0219)",
+              "properties": {
+                "category": "Compiler",
+                "executionTimeInSeconds": "<0.001",
+                "executionTimeInPercentage": "<1",
+                "tags": [
+                  "Compiler",
+                  "Telemetry"
+                ]
+              }
+            },
+            {
+              "id": "CA1822",
+              "shortDescription": {
+                "text": "Mark members as static"
+              },
+              "fullDescription": {
+                "text": "Members that do not access instance data or call instance methods can be marked as static. After you mark the methods as static, the compiler will emit nonvirtual call sites to these members. This can give you a measurable performance gain for performance-sensitive code."
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1822",
+              "properties": {
+                "category": "Performance",
+                "executionTimeInSeconds": "0.001",
+                "executionTimeInPercentage": "3",
+                "tags": [
+                  "PortedFromFxCop",
+                  "Telemetry",
+                  "EnabledRuleInAggressiveMode"
+                ]
+              }
+            },
+            {
+              "id": "CA1825",
+              "shortDescription": {
+                "text": "Avoid zero-length array allocations"
+              },
+              "defaultConfiguration": {
+                "level": "note"
+              },
+              "helpUri": "https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1825",
+              "properties": {
+                "category": "Performance",
+                "executionTimeInSeconds": "<0.001",
+                "executionTimeInPercentage": "1",
+                "tags": [
+                  "Telemetry",
+                  "EnabledRuleInAggressiveMode"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CS0219",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "The variable 'unused' is assigned but its value is never used"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///tmp/nudge%20sarif%20fixture/Fixture/Widget.cs"
+                },
+                "region": {
+                  "startLine": 20,
+                  "startColumn": 13,
+                  "endLine": 20,
+                  "endColumn": 19
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 3
+          }
+        },
+        {
+          "ruleId": "CA1822",
+          "ruleIndex": 1,
+          "level": "note",
+          "message": {
+            "text": "Member 'Announce' does not access instance data and can be marked as static"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///tmp/nudge%20sarif%20fixture/Fixture/Widget.cs"
+                },
+                "region": {
+                  "startLine": 6,
+                  "startColumn": 17,
+                  "endLine": 6,
+                  "endColumn": 25
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 1
+          }
+        },
+        {
+          "ruleId": "CA1825",
+          "ruleIndex": 2,
+          "level": "error",
+          "message": {
+            "text": "Avoid unnecessary zero-length array allocations.  Use Array.Empty<int>() instead."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///tmp/nudge%20sarif%20fixture/Fixture/Widget.cs"
+                },
+                "region": {
+                  "startLine": 14,
+                  "startColumn": 21,
+                  "endLine": 14,
+                  "endColumn": 31
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "CA1822",
+          "ruleIndex": 1,
+          "level": "note",
+          "message": {
+            "text": "Member 'Unused' does not access instance data and can be marked as static"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///tmp/nudge%20sarif%20fixture/Fixture/Widget.cs"
+                },
+                "region": {
+                  "startLine": 18,
+                  "startColumn": 17,
+                  "endLine": 18,
+                  "endColumn": 23
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 1
+          }
+        },
+        {
+          "ruleId": "CA1822",
+          "ruleIndex": 1,
+          "level": "note",
+          "message": {
+            "text": "Member 'Count' does not access instance data and can be marked as static"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file:///tmp/nudge%20sarif%20fixture/Fixture/Widget.cs"
+                },
+                "region": {
+                  "startLine": 12,
+                  "startColumn": 16,
+                  "endLine": 12,
+                  "endColumn": 21
+                }
+              }
+            }
+          ],
+          "properties": {
+            "warningLevel": 1
+          }
+        }
+      ]
+    }
+  ]
+}
