@@ -72,6 +72,37 @@ public sealed class ReporterTests
     }
 
     [Test]
+    public void Render_GroupSeverityLabel_IsTheMostSevereLevelPresent()
+    {
+        // The label comes from the precedence table (error > warning >
+        // note > none): a mixed group is labelled by its worst member, and
+        // a pure none group is labelled none, not warning.
+        var mixed = new[]
+        {
+            new BuildDiagnostic("/repo/A.cs", 1, 1, "note", "CUSTOM001", "note finding", null),
+            new BuildDiagnostic("/repo/A.cs", 2, 1, "error", "CUSTOM001", "error finding", null),
+        };
+        var noneOnly = new[]
+        {
+            new BuildDiagnostic("/repo/A.cs", 1, 1, "none", "CUSTOM001", "none finding", null),
+        };
+        var catalog = new RuleCatalog((string?)null);
+
+        var mixedReport = Reporter.Render(
+            mixed.GroupBy(d => d.RuleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            catalog, "/repo", "test.sln", buildFailed: false);
+        var noneReport = Reporter.Render(
+            noneOnly.GroupBy(d => d.RuleId, StringComparer.OrdinalIgnoreCase).ToList(),
+            catalog, "/repo", "test.sln", buildFailed: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(mixedReport, Does.Contain("(2 error issue(s))"));
+            Assert.That(noneReport, Does.Contain("(1 none issue(s))"));
+        });
+    }
+
+    [Test]
     public void RenderClean_ReportsNoFindings()
     {
         var report = Reporter.RenderClean("test.sln");

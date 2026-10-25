@@ -39,7 +39,7 @@ public static class Reporter
         foreach (var group in groups.OrderByDescending(g => g.Count()).ThenBy(g => g.Key))
         {
             var guide = catalog.Resolve(group.Key, group.First().Message);
-            var severity = group.Any(d => d.IsError) ? "error" : "warning";
+            var severity = DisplaySeverity(group);
 
             sb.AppendLine($"--- {guide.RuleId} · {guide.Title} ({group.Count()} {severity} issue(s)) ---");
             sb.AppendLine();
@@ -95,6 +95,25 @@ public static class Reporter
             sb.AppendLine($"- {avoid}");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Severity levels in precedence order, most severe first. The word
+    /// shown for a group is the first level in this table that the group
+    /// contains.
+    /// </summary>
+    private static readonly string[] SeverityPrecedence = ["error", "warning", "note", "none"];
+
+    /// <summary>
+    /// The severity word shown for a group: the most severe level present.
+    /// Findings that arrive via SARIF carry the note/none levels the build
+    /// event stream never delivers; labelling a pure note group "warning"
+    /// would misstate it.
+    /// </summary>
+    private static string DisplaySeverity(IEnumerable<BuildDiagnostic> group)
+    {
+        var severities = group.Select(d => d.Severity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return SeverityPrecedence.FirstOrDefault(severities.Contains) ?? "warning";
     }
 
     private static string Shorten(string file, string rootDir)
