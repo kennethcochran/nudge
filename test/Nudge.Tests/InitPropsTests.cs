@@ -12,6 +12,119 @@ namespace Nudge.Tests;
 [TestFixture]
 public sealed class InitPropsTests
 {
+    private string _tempDir = string.Empty;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDir);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (Directory.Exists(_tempDir))
+            Directory.Delete(_tempDir, recursive: true);
+    }
+
+    private static readonly string[] UnmanagedGroup =
+    [
+        "  <PropertyGroup>",
+        "    <ErrorLog>mine.sarif,version=2.1</ErrorLog>",
+        "  </PropertyGroup>",
+    ];
+
+    private void WriteProps(params string[][] sections)
+    {
+        var lines = new List<string> { "<Project>" };
+        foreach (var section in sections)
+            lines.AddRange(section);
+        lines.Add("</Project>");
+        File.WriteAllLines(Path.Combine(_tempDir, "Directory.Build.props"), lines);
+    }
+
+    private string WriteSarifFile(string fileName)
+    {
+        var sarifDir = Path.Combine(_tempDir, ".nudge", "sarif");
+        Directory.CreateDirectory(sarifDir);
+        var path = Path.Combine(sarifDir, fileName);
+        File.WriteAllText(path, "{}");
+        return path;
+    }
+
+    private void RunRemoveInit()
+    {
+        // RemoveInit reports to the console; swallow it so the test log
+        // stays readable.
+        var original = Console.Out;
+        Console.SetOut(new StringWriter());
+        try
+        {
+            Program.RemoveInit(
+                Path.Combine(_tempDir, ".nudge"),
+                Path.Combine(_tempDir, "Directory.Build.rsp"),
+                Path.Combine(_tempDir, "Directory.Build.props"));
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+    }
+
+    [Test]
+    public void RemoveInit_WithManagedBlock_RemovesSarifFiles()
+    {
+        WriteProps(Program.ErrorLogPropsBlockLines);
+        var sarif = WriteSarifFile("Widget.sarif");
+
+        RunRemoveInit();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(File.Exists(Path.Combine(_tempDir, "Directory.Build.props")), Is.False,
+                "the props held nothing but the arrangement, so it is deleted outright");
+            Assert.That(File.Exists(sarif), Is.False);
+        });
+    }
+
+    [Test]
+    public void RemoveInit_WithManagedBlockAndUnmanagedErrorLog_KeepsSarifFiles()
+    {
+        // The managed block is stripped, but an unmanaged ErrorLog may be
+        // writing to the same directory — those files are the user's, not
+        // init's, so removal must leave them alone.
+        WriteProps(UnmanagedGroup, Program.ErrorLogPropsBlockLines);
+        var sarif = WriteSarifFile("Widget.sarif");
+
+        RunRemoveInit();
+
+        var props = File.ReadAllText(Path.Combine(_tempDir, "Directory.Build.props"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(props, Does.Contain("<ErrorLog>mine.sarif,version=2.1</ErrorLog>"));
+            Assert.That(props, Does.Not.Contain(Program.ErrorLogPropsLabel));
+            Assert.That(File.Exists(sarif), Is.True);
+        });
+    }
+
+    [Test]
+    public void RemoveInit_WithoutManagedBlock_KeepsSarifFilesAndProps()
+    {
+        WriteProps(UnmanagedGroup);
+        var sarif = WriteSarifFile("Widget.sarif");
+        var before = File.ReadAllText(Path.Combine(_tempDir, "Directory.Build.props"));
+
+        RunRemoveInit();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(File.ReadAllText(Path.Combine(_tempDir, "Directory.Build.props")),
+                Is.EqualTo(before), "nothing of init's was there to remove");
+            Assert.That(File.Exists(sarif), Is.True);
+        });
+    }
+
     [Test]
     public void ErrorLogPropsBlock_IsPerProjectSarifUnderNudgeDir()
     {

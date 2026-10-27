@@ -436,7 +436,9 @@ internal static class Program
         return "arranged (.nudge/sarif/<project>.sarif, one per project)";
     }
 
-    private static int RemoveInit(string nudgeDir, string rspPath, string propsPath)
+    // Internal, like the other init helpers, so tests can drive the real
+    // removal against a scratch directory instead of shelling out.
+    internal static int RemoveInit(string nudgeDir, string rspPath, string propsPath)
     {
         var removed = new List<string>();
 
@@ -462,12 +464,16 @@ internal static class Program
         // Undo the ErrorLog arrangement the same way: strip only init's
         // block, and delete the props file only when nothing of the
         // user's would remain in it.
+        var managedErrorLogRemoved = false;
+        var hasUnmanagedErrorLog = false;
         if (File.Exists(propsPath))
         {
             var original = File.ReadAllLines(propsPath);
+            hasUnmanagedErrorLog = HasUnmanagedErrorLog(original);
             var remaining = StripErrorLogPropsLines(original);
             if (remaining.Count != original.Length)
             {
+                managedErrorLogRemoved = true;
                 if (IsOnlyEmptyProject(remaining))
                 {
                     File.Delete(propsPath);
@@ -481,9 +487,14 @@ internal static class Program
             }
         }
 
-        // Generated ErrorLog files are build output, not user data.
+        // Generated ErrorLog files are build output, not user data — but
+        // only when they are nudge's to clean: the arrangement must have
+        // been removed just now, and no unmanaged ErrorLog may exist that
+        // could be writing to the same directory (a user who copied the
+        // path into their own arrangement owns those files, not init).
         var sarifDir = Path.Combine(nudgeDir, "sarif");
-        if (Directory.Exists(sarifDir))
+        if (managedErrorLogRemoved && !hasUnmanagedErrorLog
+            && Directory.Exists(sarifDir))
         {
             foreach (var file in Directory.EnumerateFiles(sarifDir, "*.sarif"))
                 File.Delete(file);
