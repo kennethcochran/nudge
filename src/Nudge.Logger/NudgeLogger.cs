@@ -195,7 +195,7 @@ public sealed class NudgeLogger : ILogger
             return;
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var unreadable = 0;
+        var unreadable = new List<string>();
         foreach (var file in Directory.EnumerateFiles(_sarifDir, "*.sarif")
                      .OrderBy(f => f, StringComparer.Ordinal))
         {
@@ -204,11 +204,12 @@ public sealed class NudgeLogger : ILogger
             {
                 results = SarifReader.ReadFile(file, _rootDir);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // One bad file must not lose the others; it is reported
-                // once, below, rather than silently dropped.
-                unreadable++;
+                // below with its name and reason, rather than silently
+                // dropped or reduced to an anonymous count.
+                unreadable.Add($"{Path.GetFileName(file)}: {ex.Message}");
                 continue;
             }
 
@@ -241,8 +242,12 @@ public sealed class NudgeLogger : ILogger
             }
         }
 
-        if (unreadable > 0)
-            WriteLines($"nudge: {unreadable} SARIF file(s) under {_sarifDir} could not be read; their findings were not coached.");
+        if (unreadable.Count > 0)
+        {
+            WriteLines($"nudge: {unreadable.Count} SARIF file(s) under {_sarifDir} could not be read; their findings were not coached.");
+            foreach (var failure in unreadable)
+                WriteLines($"nudge:   {failure}");
+        }
     }
 
     private static string FormatDiagnostic(BuildDiagnostic d)

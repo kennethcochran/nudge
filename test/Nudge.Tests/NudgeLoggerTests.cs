@@ -371,6 +371,8 @@ public sealed class NudgeLoggerTests
             Assert.That(output, Does.Contain("nudge: coaching for T9999 — Test rule"));
             Assert.That(output, Does.Contain("could not be read"),
                 "an unreadable SARIF file is reported, not silently dropped");
+            Assert.That(output, Does.Contain("Broken.sarif"),
+                "the report names the file, so the user can find and fix it");
         });
     }
 
