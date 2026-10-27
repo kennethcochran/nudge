@@ -141,6 +141,10 @@ containing spaces.
   `$(MSBuildProjectName)` pattern, output under `.nudge/`); `init
   --remove` undoes it; re-runs are idempotent; a user's own pre-existing
   ErrorLog setting is detected and respected, not overwritten.
+  Known limitation: the file is keyed by project name, so same-named
+  projects in different directories share one SARIF file (last
+  compilation wins) — accepted as documented, not fixed with a
+  path-derived filename component.
 - `NudgeLogger` ingests the SARIF files at `BuildFinished` and prints
   the coaching for findings the event stream could not carry into the
   same build output. Dedup partition: events own warning/error, the

@@ -148,6 +148,9 @@ What `nudge init` actually installs:
   `.nudge/sarif/<project>.sarif`. If your props already set `ErrorLog`,
   init detects it and leaves it exactly as is — your arrangement wins, and
   only the location nudge arranged gets the build-end coaching.
+  Known limitation: the file is keyed by project *name*, so two projects
+  with the same name in different directories share one SARIF file and the
+  last compilation wins — their Info findings are not kept separately.
 
 > **Trust note:** an MSBuild logger is code that executes inside every build
 > of the repo. That is exactly why installation is an explicit, per-repo

@@ -241,6 +241,9 @@ internal static class Program
     /// project under .nudge/sarif/. $(MSBuildThisFileDirectory) is the
     /// props file's own directory — the repo root — and ends in a
     /// separator, so the concatenation is correct on any platform.
+    /// Known limitation, documented in the README: the file is keyed by
+    /// project name, so same-named projects in different directories
+    /// share one SARIF file and the last compilation wins.
     /// </summary>
     internal static readonly string[] ErrorLogPropsBlockLines =
     [
