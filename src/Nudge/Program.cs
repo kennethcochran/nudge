@@ -243,7 +243,9 @@ internal static class Program
     /// separator, so the concatenation is correct on any platform.
     /// Known limitation, documented in the README: the file is keyed by
     /// project name, so same-named projects in different directories
-    /// share one SARIF file and the last compilation wins.
+    /// share one SARIF file and the last compilation wins. The same holds
+    /// for a multi-targeted project: each target framework writes the
+    /// same file, last one wins.
     /// </summary>
     internal static readonly string[] ErrorLogPropsBlockLines =
     [

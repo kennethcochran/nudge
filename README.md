@@ -153,6 +153,11 @@ What `nudge init` actually installs:
   Known limitation: the file is keyed by project *name*, so two projects
   with the same name in different directories share one SARIF file and the
   last compilation wins — their Info findings are not kept separately.
+  The same applies to a project targeting multiple frameworks: each
+  framework writes the same file and the last one wins, so an Info finding
+  that exists in only one framework's build may go uncoached. Warning and
+  error findings are unaffected — those print live during the build, not
+  from the file.
 
 > **Trust note:** an MSBuild logger is code that executes inside every build
 > of the repo. That is exactly why installation is an explicit, per-repo
