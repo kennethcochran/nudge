@@ -37,7 +37,10 @@ namespace Nudge.Logger;
 /// per-project ErrorLog SARIF files (arranged by <c>nudge init</c> in
 /// <c>Directory.Build.props</c>) and coaches the note/none findings in
 /// them. The partition is disjoint by construction — events own
-/// warning/error, the SARIF pass owns note/none.
+/// warning/error, the SARIF pass owns note/none. The SARIF pass is also
+/// scoped to this build: only the files of projects that raised
+/// <c>ProjectStarted</c> are read, so a partial build never prints
+/// another project's stale findings from an earlier build.
 ///
 /// The logger never fails the build: coaching, not gating. Any internal
 /// failure is swallowed with a one-line notice so a broken logger can never
@@ -53,6 +56,7 @@ public sealed class NudgeLogger : ILogger
     private readonly List<BuildDiagnostic> _diagnostics = new();
     private readonly HashSet<string> _seen = new(StringComparer.Ordinal);
     private readonly HashSet<string> _coachedRules = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _startedProjects = new(StringComparer.OrdinalIgnoreCase);
     private readonly Stopwatch _elapsed = new();
 
     private bool _setupDone;
@@ -78,6 +82,22 @@ public sealed class NudgeLogger : ILogger
             // messages (restore results, SDK notices) must not vanish.
             if (_consoleMode && e.Importance == MessageImportance.High && !string.IsNullOrEmpty(e.Message))
                 WriteLines(e.Message);
+        };
+        eventSource.ProjectStarted += (_, e) =>
+        {
+            // Participation, not diagnostics, scopes the SARIF finish: a
+            // project whose only findings are notes raises no diagnostic
+            // events at all, so its presence must come from here. The
+            // stored name is the SARIF filename init's arrangement
+            // produces for it: $(MSBuildProjectName) is the project file's
+            // name without its extension.
+            if (string.IsNullOrEmpty(e.ProjectFile))
+                return;
+            lock (_gate)
+            {
+                _startedProjects.Add(
+                    Path.GetFileNameWithoutExtension(e.ProjectFile) + ".sarif");
+            }
         };
         eventSource.BuildFinished += (_, e) => OnBuildFinished(e.Succeeded);
     }
@@ -188,6 +208,10 @@ public sealed class NudgeLogger : ILogger
     /// diagnostic line (it never appeared in the console output) followed
     /// by the same coaching the event path gives: full guide on the rule's
     /// first occurrence in the build, one-line reminder after.
+    /// Only the files of projects that started in this build are read: a
+    /// SARIF file left over from an earlier, unrelated build is stale
+    /// output, not this build's findings, and must not be coached here.
+    /// A project that never started contributes no SARIF, by construction.
     /// </summary>
     private void CoachSarifFindings()
     {
@@ -197,6 +221,7 @@ public sealed class NudgeLogger : ILogger
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var unreadable = new List<string>();
         foreach (var file in Directory.EnumerateFiles(_sarifDir, "*.sarif")
+                     .Where(f => _startedProjects.Contains(Path.GetFileName(f)))
                      .OrderBy(f => f, StringComparer.Ordinal))
         {
             IReadOnlyList<BuildDiagnostic> results;

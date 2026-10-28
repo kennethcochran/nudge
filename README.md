@@ -124,7 +124,9 @@ Info-severity findings (suggestion-level analyzer rules) never reach a
 build logger at all — no event carries them. Those are coached from a
 second channel: `nudge init` arranges a per-project compiler ErrorLog, and
 at the end of the build the logger reads the SARIF files and prints each
-Info finding with the same coaching. To inspect a SARIF log on its own,
+Info finding with the same coaching. Only the files of projects that
+started in this build are read, so a partial build never prints another
+project's stale findings from an earlier build. To inspect a SARIF log on its own,
 `nudge coach <file.sarif>` prints the full grouped report.
 
 Prefer a quieter output? `nudge init --console-logger` goes one step

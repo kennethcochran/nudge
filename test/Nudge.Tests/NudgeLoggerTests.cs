@@ -282,6 +282,7 @@ public sealed class NudgeLoggerTests
 
         var output = Run(NewLogger(), events =>
         {
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "Foo.csproj"));
             events.RaiseBuildFinished(succeeded: true);
         });
 
@@ -303,6 +304,7 @@ public sealed class NudgeLoggerTests
 
         var output = Run(NewLogger(), events =>
         {
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "Foo.csproj"));
             events.RaiseWarning("T9999", "Something smells.", Path.Combine(_tempDir, "src", "Foo.cs"), 12);
             events.RaiseBuildFinished(succeeded: true);
         });
@@ -326,6 +328,7 @@ public sealed class NudgeLoggerTests
 
         var output = Run(NewLogger(), events =>
         {
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "Foo.csproj"));
             events.RaiseBuildFinished(succeeded: true);
         });
 
@@ -345,6 +348,8 @@ public sealed class NudgeLoggerTests
 
         var output = Run(NewLogger(), events =>
         {
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "A.csproj"));
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "B.csproj"));
             events.RaiseBuildFinished(succeeded: true);
         });
 
@@ -363,6 +368,8 @@ public sealed class NudgeLoggerTests
 
         var output = Run(NewLogger(), events =>
         {
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "Foo.csproj"));
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "Broken.csproj"));
             events.RaiseBuildFinished(succeeded: true);
         });
 
@@ -374,6 +381,48 @@ public sealed class NudgeLoggerTests
             Assert.That(output, Does.Contain("Broken.sarif"),
                 "the report names the file, so the user can find and fix it");
         });
+    }
+
+    [Test]
+    public void BuildFinished_SarifScopedToStartedProjects()
+    {
+        // The SARIF finish (CodeRabbit PR #13, round 2): a partial build
+        // must not coach another project's stale SARIF from an earlier
+        // build. Only the file of a project that started in this build
+        // is read — even though both files sit in the shared directory.
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9998");
+        WriteSarif("A.sarif", ("T9999", "note", "Something smells.", 12));
+        WriteSarif("B.sarif", ("T9998", "note", "Something else smells.", 20));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseProjectStarted(Path.Combine(_tempDir, "B.csproj"));
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(output, Does.Contain("nudge: coaching for T9998 — Test rule"));
+            Assert.That(output, Does.Not.Contain("T9999"),
+                "ProjectA's file was never started in this build, so its findings stay unread");
+        });
+    }
+
+    [Test]
+    public void BuildFinished_NoStartedProjects_CoachesNothing()
+    {
+        // A build in which no project started has no SARIF of its own:
+        // pre-existing files are earlier builds' output, not this one's.
+        WriteGuide(Path.Combine(_tempDir, "rules"), "T9999");
+        WriteSarif("Foo.sarif", ("T9999", "note", "Something smells.", 12));
+
+        var output = Run(NewLogger(), events =>
+        {
+            events.RaiseBuildFinished(succeeded: true);
+        });
+
+        Assert.That(output, Does.Not.Contain("nudge:"));
     }
 
     [Test]
@@ -425,5 +474,10 @@ public sealed class NudgeLoggerTests
         public void RaiseBuildFinished(bool succeeded = true) =>
             BuildFinished?.Invoke(this, new BuildFinishedEventArgs(
                 "test", null, succeeded, DateTime.UtcNow));
+
+        public void RaiseProjectStarted(string projectFile) =>
+            ProjectStarted?.Invoke(this, new ProjectStartedEventArgs(
+                message: "Project started.", helpKeyword: null, projectFile: projectFile,
+                targetNames: "Build", properties: null, items: null, eventTimestamp: DateTime.UtcNow));
     }
 }
