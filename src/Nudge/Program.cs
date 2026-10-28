@@ -143,6 +143,11 @@ internal static class Program
         prints coaching inline, next to each diagnostic it applies to:
           - copies Nudge.Logger.dll (and Nudge.Core.dll) into .nudge/
           - writes Directory.Build.rsp at the repo root loading the logger
+          - arranges per-project ErrorLog SARIF in Directory.Build.props
+            (.nudge/sarif/<project>.sarif), so the logger can also coach the
+            Info-severity findings the build event stream never carries.
+            An existing ErrorLog setting in Directory.Build.props is
+            detected and left as is, never overwritten.
 
         With --console-logger, the logger additionally replaces the default
         console logger (/noconsolelogger): it prints every diagnostic itself,
@@ -166,7 +171,8 @@ internal static class Program
     /// </summary>
     internal const string InitLoggerLine =
         "/logger:Nudge.Logger.NudgeLogger,\"%MSBuildThisFileDirectory%.nudge/Nudge.Logger.dll\"" +
-        ";baseline=\"%MSBuildThisFileDirectory%.nudge/baseline.txt\"";
+        ";baseline=\"%MSBuildThisFileDirectory%.nudge/baseline.txt\"" +
+        ";sarifdir=\"%MSBuildThisFileDirectory%.nudge/sarif\"";
 
     /// <summary>
     /// The logger registration for console mode (<c>nudge init
@@ -218,6 +224,95 @@ internal static class Program
     }
 
     /// <summary>
+    /// The Label of the PropertyGroup `nudge init` manages in
+    /// Directory.Build.props: the per-project ErrorLog arrangement. The
+    /// logger's SARIF finish reads these files at build end to coach the
+    /// note/none (Info) findings the build event stream never carries.
+    /// </summary>
+    internal const string ErrorLogPropsLabel = "nudge-init-errorlog";
+
+    /// <summary>The comment line written directly above the managed ErrorLog group.</summary>
+    internal const string ErrorLogPropsComment =
+        "<!-- Added by nudge init: per-project ErrorLog SARIF for Info-level coaching. -->";
+
+    /// <summary>
+    /// The Directory.Build.props lines `nudge init` owns: a comment plus a
+    /// labelled PropertyGroup setting ErrorLog to one SARIF file per
+    /// project under .nudge/sarif/. $(MSBuildThisFileDirectory) is the
+    /// props file's own directory — the repo root — and ends in a
+    /// separator, so the concatenation is correct on any platform.
+    /// Known limitation, documented in the README: the file is keyed by
+    /// project name, so same-named projects in different directories
+    /// share one SARIF file and the last compilation wins. The same holds
+    /// for a multi-targeted project: each target framework writes the
+    /// same file, last one wins.
+    /// </summary>
+    internal static readonly string[] ErrorLogPropsBlockLines =
+    [
+        ErrorLogPropsComment,
+        $"<PropertyGroup Label=\"{ErrorLogPropsLabel}\">",
+        "  <ErrorLog>$(MSBuildThisFileDirectory).nudge/sarif/$(MSBuildProjectName).sarif,version=2.1</ErrorLog>",
+        "</PropertyGroup>",
+    ];
+
+    /// <summary>True when the lines carry init's managed ErrorLog group.</summary>
+    internal static bool HasErrorLogPropsBlock(IEnumerable<string> lines) =>
+        lines.Any(l => l.Contains($"Label=\"{ErrorLogPropsLabel}\"", StringComparison.Ordinal));
+
+    /// <summary>
+    /// True when an ErrorLog setting exists outside init's managed group —
+    /// the user's own arrangement, which init detects and respects rather
+    /// than overwriting or shadowing it.
+    /// </summary>
+    internal static bool HasUnmanagedErrorLog(IEnumerable<string> lines) =>
+        StripErrorLogPropsLines(lines).Any(
+            l => l.Contains("<ErrorLog", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Removes the lines `nudge init` owns from a Directory.Build.props:
+    /// its comment line and the labelled PropertyGroup (through its
+    /// closing tag). Every other line passes through untouched.
+    /// </summary>
+    internal static List<string> StripErrorLogPropsLines(IEnumerable<string> lines)
+    {
+        var result = new List<string>();
+        var inBlock = false;
+        foreach (var line in lines)
+        {
+            if (line.Trim().Equals(ErrorLogPropsComment, StringComparison.Ordinal))
+                continue;
+            if (line.Contains($"Label=\"{ErrorLogPropsLabel}\"", StringComparison.Ordinal))
+            {
+                inBlock = true;
+                continue;
+            }
+            if (inBlock)
+            {
+                if (line.Contains("</PropertyGroup>", StringComparison.Ordinal))
+                    inBlock = false;
+                continue;
+            }
+            result.Add(line);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// True when nothing but an empty Project element (and whitespace or
+    /// an XML declaration) remains — the props file exists only because
+    /// init created it, so removal may delete it outright.
+    /// </summary>
+    internal static bool IsOnlyEmptyProject(IEnumerable<string> lines) =>
+        lines.All(l =>
+        {
+            var t = l.Trim();
+            return t.Length == 0
+                || t.Equals("<Project>", StringComparison.Ordinal)
+                || t.Equals("</Project>", StringComparison.Ordinal)
+                || t.StartsWith("<?xml", StringComparison.Ordinal);
+        });
+
+    /// <summary>
     /// The on-ramp for build-time coaching: install the MSBuild logger into
     /// the repo. Explicit opt-in — an auto-loaded logger DLL is code execution
     /// on build, so this never happens without the user asking for it.
@@ -240,9 +335,10 @@ internal static class Program
             var rootDir = FindRepoRoot();
             var nudgeDir = Path.Combine(rootDir, ".nudge");
             var rspPath = Path.Combine(rootDir, "Directory.Build.rsp");
+            var propsPath = Path.Combine(rootDir, "Directory.Build.props");
 
             if (remove)
-                return RemoveInit(nudgeDir, rspPath);
+                return RemoveInit(nudgeDir, rspPath, propsPath);
 
             Directory.CreateDirectory(nudgeDir);
 
@@ -276,9 +372,12 @@ internal static class Program
                 File.WriteAllLines(rspPath, lines);
             }
 
+            var propsStatus = ArrangeErrorLogProps(propsPath, nudgeDir, force);
+
             Console.WriteLine($"nudge init: logger installed.");
             Console.WriteLine($"  logger:  {Path.Combine(nudgeDir, "Nudge.Logger.dll")}");
             Console.WriteLine($"  rsp:     {rspPath}");
+            Console.WriteLine($"  props:   {propsPath} — {propsStatus}");
             Console.WriteLine(consoleLogger
                 ? $"  Every `dotnet build` under {rootDir} now prints diagnostics through the nudge logger, coaching inline."
                 : $"  Every `dotnet build` under {rootDir} now gets coaching inline, next to each diagnostic.");
@@ -298,7 +397,50 @@ internal static class Program
         }
     }
 
-    private static int RemoveInit(string nudgeDir, string rspPath)
+    /// <summary>
+    /// Arranges the per-project ErrorLog SARIF in Directory.Build.props.
+    /// Returns a one-line status for init's report. A user's own ErrorLog
+    /// setting in the props is detected and respected: the arrangement is
+    /// skipped, because replacing or shadowing their setting is not
+    /// init's to do. Idempotent: an existing managed block is left alone
+    /// unless forced, in which case it is rewritten fresh.
+    /// </summary>
+    private static string ArrangeErrorLogProps(string propsPath, string nudgeDir, bool force)
+    {
+        var lines = File.Exists(propsPath)
+            ? File.ReadAllLines(propsPath).ToList()
+            : new List<string>();
+
+        if (HasUnmanagedErrorLog(lines))
+            return "an ErrorLog setting already exists there and was left as is";
+
+        if (HasErrorLogPropsBlock(lines) && !force)
+            return "already arranged";
+
+        lines = StripErrorLogPropsLines(lines);
+        Directory.CreateDirectory(Path.Combine(nudgeDir, "sarif"));
+        if (lines.Count == 0)
+        {
+            lines.Add("<Project>");
+            lines.AddRange(ErrorLogPropsBlockLines);
+            lines.Add("</Project>");
+        }
+        else
+        {
+            var closeIndex = lines.FindLastIndex(
+                l => l.Contains("</Project>", StringComparison.Ordinal));
+            if (closeIndex < 0)
+                lines.AddRange(ErrorLogPropsBlockLines);
+            else
+                lines.InsertRange(closeIndex, ErrorLogPropsBlockLines);
+        }
+        File.WriteAllLines(propsPath, lines);
+        return "arranged (.nudge/sarif/<project>.sarif, one per project)";
+    }
+
+    // Internal, like the other init helpers, so tests can drive the real
+    // removal against a scratch directory instead of shelling out.
+    internal static int RemoveInit(string nudgeDir, string rspPath, string propsPath)
     {
         var removed = new List<string>();
 
@@ -318,6 +460,50 @@ internal static class Program
             {
                 File.WriteAllLines(rspPath, remaining);
                 removed.Add(rspPath + " (nudge lines removed)");
+            }
+        }
+
+        // Undo the ErrorLog arrangement the same way: strip only init's
+        // block, and delete the props file only when nothing of the
+        // user's would remain in it.
+        var managedErrorLogRemoved = false;
+        var hasUnmanagedErrorLog = false;
+        if (File.Exists(propsPath))
+        {
+            var original = File.ReadAllLines(propsPath);
+            hasUnmanagedErrorLog = HasUnmanagedErrorLog(original);
+            var remaining = StripErrorLogPropsLines(original);
+            if (remaining.Count != original.Length)
+            {
+                managedErrorLogRemoved = true;
+                if (IsOnlyEmptyProject(remaining))
+                {
+                    File.Delete(propsPath);
+                    removed.Add(propsPath + " (deleted — only contained the nudge ErrorLog arrangement)");
+                }
+                else
+                {
+                    File.WriteAllLines(propsPath, remaining);
+                    removed.Add(propsPath + " (ErrorLog arrangement removed)");
+                }
+            }
+        }
+
+        // Generated ErrorLog files are build output, not user data — but
+        // only when they are nudge's to clean: the arrangement must have
+        // been removed just now, and no unmanaged ErrorLog may exist that
+        // could be writing to the same directory (a user who copied the
+        // path into their own arrangement owns those files, not init).
+        var sarifDir = Path.Combine(nudgeDir, "sarif");
+        if (managedErrorLogRemoved && !hasUnmanagedErrorLog
+            && Directory.Exists(sarifDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(sarifDir, "*.sarif"))
+                File.Delete(file);
+            if (!Directory.EnumerateFileSystemEntries(sarifDir).Any())
+            {
+                Directory.Delete(sarifDir);
+                removed.Add(sarifDir + " (generated SARIF removed)");
             }
         }
 
